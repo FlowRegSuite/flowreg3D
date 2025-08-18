@@ -1,0 +1,9 @@
+numpy
+scipy
+scikit-imagenice
+opencv-contrib-python
+h5py
+tifffile
+numba
+pydantic
+hdf5storage
