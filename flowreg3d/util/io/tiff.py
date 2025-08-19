@@ -11,8 +11,8 @@ except ImportError:
     TIFF_SUPPORTED = False
     warnings.warn("tifffile not installed. TIFF support unavailable.")
 
-from pyflowreg.util.io._base import VideoReader, VideoWriter
-from pyflowreg.util.io._ds_io import DSFileReader, DSFileWriter
+from flowreg3d.util.io._base import VideoReader, VideoWriter
+from flowreg3d.util.io._ds_io import DSFileReader, DSFileWriter
 
 
 class TIFFFileReader(VideoReader):
@@ -493,13 +493,13 @@ class TIFFFileWriter(VideoWriter):
         if hasattr(self, '_current_axes'):
             metadata.update({
                 # 'axes': self._current_axes,
-                'Software': 'pyflowreg'
+                'Software': 'flowreg3d'
             })
 
         self._file_kwargs = {
             'bigtiff': self.bigtiff,
             'compression': compression,
-            'metadata': metadata if hasattr(self, '_current_axes') else {'Software': 'pyflowreg'},
+            'metadata': metadata if hasattr(self, '_current_axes') else {'Software': 'flowreg3d'},
             'imagej': self.imagej
         }
 
@@ -633,7 +633,7 @@ def test_mdf_conversion():
     from pathlib import Path
 
     try:
-        from pyflowreg.util.io.mdf import MDFFileReader
+        from flowreg3d.util.io.mdf import MDFFileReader
     except ImportError:
         print("MDF reader not available, skipping MDF conversion test")
         return

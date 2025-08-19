@@ -4,8 +4,8 @@ from typing import Union, List
 import h5py
 import numpy as np
 
-from pyflowreg.util.io._base import VideoReader, VideoWriter
-from pyflowreg.util.io._ds_io import DSFileReader, DSFileWriter
+from flowreg3d.util.io._base import VideoReader, VideoWriter
+from flowreg3d.util.io._ds_io import DSFileReader, DSFileWriter
 
 
 class HDF5FileReader(DSFileReader, VideoReader):

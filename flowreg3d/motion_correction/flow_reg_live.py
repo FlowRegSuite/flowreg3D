@@ -9,10 +9,10 @@ from collections import deque
 from typing import Optional, Tuple, Union
 import numpy as np
 
-from pyflowreg.motion_correction.OF_options import OFOptions, QualitySetting
-from pyflowreg.motion_correction.compensate_arr import compensate_arr
-from pyflowreg.core.optical_flow_3d import get_displacement, imregister_wrapper
-from pyflowreg.util.image_processing import (
+from flowreg3d.motion_correction.OF_options import OFOptions, QualitySetting
+from flowreg3d.motion_correction.compensate_arr import compensate_arr
+from flowreg3d.core.optical_flow_3d import get_displacement, imregister_wrapper
+from flowreg3d.util.image_processing import (
     normalize, 
     apply_gaussian_filter,
     gaussian_filter_1d_half_kernel

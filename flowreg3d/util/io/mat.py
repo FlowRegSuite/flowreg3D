@@ -7,8 +7,8 @@ import scipy.io as sio
 import h5py
 import hdf5storage as h5s
 
-from pyflowreg.util.io._base import VideoReader, VideoWriter
-from pyflowreg.util.io._ds_io import DSFileReader, DSFileWriter
+from flowreg3d.util.io._base import VideoReader, VideoWriter
+from flowreg3d.util.io._ds_io import DSFileReader, DSFileWriter
 
 
 class MATFileReader(DSFileReader, VideoReader):

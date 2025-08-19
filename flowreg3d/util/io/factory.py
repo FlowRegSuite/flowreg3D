@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pyflowreg.util.io._base import VideoReader, VideoWriter
+from flowreg3d.util.io._base import VideoReader, VideoWriter
 
 
 def get_video_file_reader(input_source: Union[str, Path, np.ndarray, VideoReader, List[str]], 
@@ -28,7 +28,7 @@ def get_video_file_reader(input_source: Union[str, Path, np.ndarray, VideoReader
 
     # Handle numpy arrays
     if isinstance(input_source, np.ndarray):
-        from pyflowreg.util.io._arr import ArrayReader
+        from flowreg3d.util.io._arr import ArrayReader
         return ArrayReader(input_source, buffer_size, bin_size)
     
     # Handle VideoReader instances (already initialized)
@@ -36,11 +36,11 @@ def get_video_file_reader(input_source: Union[str, Path, np.ndarray, VideoReader
         return input_source
 
     # Import readers here to avoid circular imports
-    from pyflowreg.util.io.tiff import TIFFFileReader
-    from pyflowreg.util.io.hdf5 import HDF5FileReader
-    from pyflowreg.util.io.mat import MATFileReader
-    from pyflowreg.util.io.mdf import MDFFileReader
-    from pyflowreg.util.io.multifile_wrappers import MULTICHANNELFileReader
+    from flowreg3d.util.io.tiff import TIFFFileReader
+    from flowreg3d.util.io.hdf5 import HDF5FileReader
+    from flowreg3d.util.io.mat import MATFileReader
+    from flowreg3d.util.io.mdf import MDFFileReader
+    from flowreg3d.util.io.multifile_wrappers import MULTICHANNELFileReader
 
     # Handle multichannel input (list of files)
     if isinstance(input_source, list):
@@ -110,14 +110,14 @@ def get_video_file_writer(file_path: str, output_format: str, **kwargs) -> Video
     from pathlib import Path
 
     # Import writers here to avoid circular imports
-    from pyflowreg.util.io.tiff import TIFFFileWriter
-    from pyflowreg.util.io.hdf5 import HDF5FileWriter
-    from pyflowreg.util.io.mat import MATFileWriter
-    from pyflowreg.util.io.multifile_wrappers import MULTIFILEFileWriter
+    from flowreg3d.util.io.tiff import TIFFFileWriter
+    from flowreg3d.util.io.hdf5 import HDF5FileWriter
+    from flowreg3d.util.io.mat import MATFileWriter
+    from flowreg3d.util.io.multifile_wrappers import MULTIFILEFileWriter
 
     # Special handling for memory formats
     if output_format == 'ARRAY':
-        from pyflowreg.util.io._arr import ArrayWriter
+        from flowreg3d.util.io._arr import ArrayWriter
         return ArrayWriter()
 
     # Handle different output formats (matches MATLAB switch statement)

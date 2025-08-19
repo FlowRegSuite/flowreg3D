@@ -9,13 +9,13 @@ from typing import Any, Optional, Tuple, List, Callable, Dict
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-from pyflowreg import get_displacement
-from pyflowreg.core.optical_flow_3d import imregister_wrapper
-from pyflowreg._runtime import RuntimeContext
-from pyflowreg.util.image_processing import normalize, apply_gaussian_filter
+from flowreg3d import get_displacement
+from flowreg3d.core.optical_flow_3d import imregister_wrapper
+from flowreg3d._runtime import RuntimeContext
+from flowreg3d.util.image_processing import normalize, apply_gaussian_filter
 
 # Import to trigger executor registration (side effect)
-import pyflowreg.motion_correction.parallelization
+import flowreg3d.motion_correction.parallelization
 
 
 @dataclass
@@ -93,7 +93,7 @@ class BatchMotionCorrector:
             
             # If sequential is also not available, import and register it
             if executor_class is None:
-                from pyflowreg.motion_correction.parallelization.sequential import SequentialExecutor
+                from flowreg3d.motion_correction.parallelization.sequential import SequentialExecutor
                 SequentialExecutor.register()
                 executor_class = RuntimeContext.get_parallelization_executor('sequential')
                 
@@ -156,7 +156,7 @@ class BatchMotionCorrector:
         # Create displacement writer if requested
         if getattr(self.options, 'save_w', False):
             try:
-                from pyflowreg.util.io.factory import get_video_file_writer
+                from flowreg3d.util.io.factory import get_video_file_writer
                 
                 # Use ArrayWriter for displacements when main output is ARRAY
                 if self.options.output_format == 'ARRAY':

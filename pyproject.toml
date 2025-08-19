@@ -3,7 +3,7 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pyflowreg"
+name = "flowreg3d"
 version = "0.0.0-alpha.1"
 description = "Variational optical-flow motion correction for 2-photon microscopy videos and 3D scans"
 readme = "README.md"
@@ -39,5 +39,5 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["pyflowreg*"]
+include = ["flowreg3d*"]
 exclude = ["tests*", "docs*", "examples*"]

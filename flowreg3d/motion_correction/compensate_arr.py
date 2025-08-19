@@ -6,8 +6,8 @@ Provides MATLAB compensate_inplace equivalent functionality.
 from typing import Optional, Tuple, Callable
 import numpy as np
 
-from pyflowreg.motion_correction.OF_options import OFOptions, OutputFormat
-from pyflowreg.motion_correction.compensate_recording import BatchMotionCorrector
+from flowreg3d.motion_correction.OF_options import OFOptions, OutputFormat
+from flowreg3d.motion_correction.compensate_recording import BatchMotionCorrector
 
 
 def compensate_arr(c1: np.ndarray, c_ref: np.ndarray, options: Optional[OFOptions] = None, 
@@ -34,7 +34,7 @@ def compensate_arr(c1: np.ndarray, c_ref: np.ndarray, options: Optional[OFOption
     
     Example:
         >>> import numpy as np
-        >>> from pyflowreg.motion_correction import compensate_arr
+        >>> from flowreg3d.motion_correction import compensate_arr
         >>> 
         >>> # Create test data
         >>> video = np.random.rand(100, 256, 256, 2)  # 100 frames, 2 channels

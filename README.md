@@ -29,8 +29,8 @@ pip install -r requirements.txt
 ## Installation via pip and conda
 
 ```bash
-conda create --name pyflowreg python=3.10
-pip install pyflowreg
+conda create --name flowreg3d python=3.10
+pip install flowreg3d
 ```
 
 ## Getting started

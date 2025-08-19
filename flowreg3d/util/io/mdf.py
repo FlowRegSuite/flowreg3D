@@ -5,7 +5,7 @@ from typing import Union, List
 
 import numpy as np
 
-from pyflowreg.util.io._base import VideoReader
+from flowreg3d.util.io._base import VideoReader
 
 # =============================================================================
 # IMPORTANT WARNING:

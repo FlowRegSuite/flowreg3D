@@ -28,10 +28,10 @@ except ImportError:
 
 # Optional IO backends
 try:
-    from pyflowreg.util.io.hdf5 import HDF5FileReader, HDF5FileWriter
-    from pyflowreg.util.io.mdf import MDFFileReader
-    from pyflowreg.util.io._base import VideoReader, VideoWriter
-    from pyflowreg.util.io.tiff import TIFFStackReader, TIFFStackWriter
+    from flowreg3d.util.io.hdf5 import HDF5FileReader, HDF5FileWriter
+    from flowreg3d.util.io.mdf import MDFFileReader
+    from flowreg3d.util.io._base import VideoReader, VideoWriter
+    from flowreg3d.util.io.tiff import TIFFStackReader, TIFFStackWriter
 except ImportError:
     # Use placeholder classes instead of object to avoid isinstance() always returning True
     class _VideoReaderPlaceholder: 
@@ -316,7 +316,7 @@ class OFOptions(BaseModel):
             return self._video_reader
 
         # Call factory function to create reader (matches MATLAB behavior)
-        from pyflowreg.util.io.factory import get_video_file_reader
+        from flowreg3d.util.io.factory import get_video_file_reader
         self._video_reader = get_video_file_reader(
             self.input_file,
             buffer_size=self.buffer_size,
@@ -349,7 +349,7 @@ class OFOptions(BaseModel):
                 filename = str(self.output_path / f"{input_name}_compensated.{ext}")
 
         # Call factory function to create writer (matches MATLAB)
-        from pyflowreg.util.io.factory import get_video_file_writer
+        from flowreg3d.util.io.factory import get_video_file_writer
         self._video_writer = get_video_file_writer(
             filename,
             self.output_format.value
@@ -437,9 +437,9 @@ class OFOptions(BaseModel):
             # Mean as initial reference
             ref_mean = np.mean(frames_norm, axis=3)
 
-            # Compensate if pyflowreg available
+            # Compensate if flowreg3d available
             try:
-                from pyflowreg import compensate_sequence
+                from flowreg3d import compensate_sequence
 
                 # Use stronger regularization for preregistration
                 alpha_prereg = tuple(a + 2.0 for a in self.alpha) if isinstance(self.alpha, tuple) else self.alpha + 2.0
@@ -576,9 +576,9 @@ def compensate_inplace(
     params = options.to_dict()
 
     try:
-        from pyflowreg import get_displacement, compensate_sequence_uv
+        from flowreg3d import get_displacement, compensate_sequence_uv
     except ImportError as e:
-        raise RuntimeError("pyflowreg core functions not available") from e
+        raise RuntimeError("flowreg3d core functions not available") from e
 
     # Compute displacements
     T = frames.shape[3]

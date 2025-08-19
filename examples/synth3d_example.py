@@ -1,10 +1,10 @@
 import numpy as np
 import h5py
 import cv2
-import pyflowreg as pfr
+import flowreg3d as pfr
 from os.path import join, dirname
 import os
-from pyflowreg.core.optical_flow_3d import imregister_wrapper
+from flowreg3d.core.optical_flow_3d import imregister_wrapper
 from time import time
 
 
