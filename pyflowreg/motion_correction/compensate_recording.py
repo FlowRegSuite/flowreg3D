@@ -10,7 +10,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 
 from pyflowreg import get_displacement
-from pyflowreg.core.optical_flow import imregister_wrapper
+from pyflowreg.core.optical_flow_3d import imregister_wrapper
 from pyflowreg._runtime import RuntimeContext
 from pyflowreg.util.image_processing import normalize, apply_gaussian_filter
 
