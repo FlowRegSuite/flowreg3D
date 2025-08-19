@@ -238,13 +238,21 @@ def get_displacement(fixed, moving, alpha=(2, 2, 2), update_lag=10, iterations=2
             w = add_boundary(resize(w_init, level_size))
             tmp = f2_level.copy()
         else:
-            u = add_boundary(resize(u[1:-1, 1:-1, 1:-1], level_size))
-            v = add_boundary(resize(v[1:-1, 1:-1, 1:-1], level_size))
-            w = add_boundary(resize(w[1:-1, 1:-1, 1:-1], level_size))
+            # Get previous and new sizes for scaling
+            sz_prev = (u.shape[0]-2, u.shape[1]-2, u.shape[2]-2)
+            sz_new = level_size
+            sx = sz_new[2] / sz_prev[2]
+            sy = sz_new[1] / sz_prev[1]
+            sz = sz_new[0] / sz_prev[0]
+            # Resize and scale the displacement fields to new level
+            u = add_boundary(resize(u[1:-1, 1:-1, 1:-1], level_size) * sx)
+            v = add_boundary(resize(v[1:-1, 1:-1, 1:-1], level_size) * sy)
+            w = add_boundary(resize(w[1:-1, 1:-1, 1:-1], level_size) * sz)
+            # Apply warping without division (displacements are in level units)
             tmp = imregister_wrapper(f2_level, 
-                                   u[1:-1, 1:-1, 1:-1] / current_hx,
-                                   v[1:-1, 1:-1, 1:-1] / current_hy,
-                                   w[1:-1, 1:-1, 1:-1] / current_hz,
+                                   u[1:-1, 1:-1, 1:-1],
+                                   v[1:-1, 1:-1, 1:-1],
+                                   w[1:-1, 1:-1, 1:-1],
                                    f1_level)
         if tmp.ndim == 3:
             tmp = tmp[:, :, :, np.newaxis]

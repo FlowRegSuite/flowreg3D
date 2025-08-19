@@ -266,14 +266,27 @@ def compute_flow_3d(
     for it in range(iterations):
         if a_smooth != 1.0:
             nonlinearity_smoothness_3d(psi_smooth, u,du, v,dv, w,dw, p,m,n, a_smooth, hx,hy,hz)
-        if a_data != 1.0 and (it % update_lag == 0):
+        if it % update_lag == 0:
             for c in range(C):
-                for k in range(p):
-                    for j in range(m):
-                        for i in range(n):
-                            val = J44[k,j,i,c]
-                            if val<0.0: val=0.0
-                            psi[k,j,i,c] = a_data * (val+eps)**(a_data-1.0)
+                adc = a_data[c]
+                if adc != 1.0:
+                    for k in range(p):
+                        for j in range(m):
+                            for i in range(n):
+                                val = (
+                                    J11[k,j,i,c]*du[k,j,i]*du[k,j,i] +
+                                    J22[k,j,i,c]*dv[k,j,i]*dv[k,j,i] +
+                                    J33[k,j,i,c]*dw[k,j,i]*dw[k,j,i] +
+                                    2.0*J12[k,j,i,c]*du[k,j,i]*dv[k,j,i] +
+                                    2.0*J13[k,j,i,c]*du[k,j,i]*dw[k,j,i] +
+                                    2.0*J23[k,j,i,c]*dv[k,j,i]*dw[k,j,i] +
+                                    2.0*J14[k,j,i,c]*du[k,j,i] +
+                                    2.0*J24[k,j,i,c]*dv[k,j,i] +
+                                    2.0*J34[k,j,i,c]*dw[k,j,i] +
+                                    J44[k,j,i,c]
+                                )
+                                if val < 0.0: val = 0.0
+                                psi[k,j,i,c] = adc * (val+eps)**(adc-1.0)
 
         set_boundary_3d(du)
         set_boundary_3d(dv)
@@ -333,7 +346,7 @@ def compute_flow_3d(
 
                     for c in range(C):
                         ww = weight[k,j,i,c]
-                        if a_data != 1.0: ww *= psi[k,j,i,c]
+                        if a_data[c] != 1.0: ww *= psi[k,j,i,c]
                         denom_u += ww*J11[k,j,i,c]
                         denom_v += ww*J22[k,j,i,c]
                         denom_w += ww*J33[k,j,i,c]
@@ -341,7 +354,7 @@ def compute_flow_3d(
                     num_u2 = num_u
                     for c in range(C):
                         ww = weight[k,j,i,c]
-                        if a_data != 1.0: ww *= psi[k,j,i,c]
+                        if a_data[c] != 1.0: ww *= psi[k,j,i,c]
                         num_u2 -= ww*(J14[k,j,i,c] + J12[k,j,i,c]*dv[k,j,i] + J13[k,j,i,c]*dw[k,j,i])
                     du_kp1 = num_u2/denom_u if denom_u!=0.0 else 0.0
                     du[k,j,i] = (1.0-OMEGA)*du[k,j,i] + OMEGA*du_kp1
@@ -349,7 +362,7 @@ def compute_flow_3d(
                     num_v2 = num_v
                     for c in range(C):
                         ww = weight[k,j,i,c]
-                        if a_data != 1.0: ww *= psi[k,j,i,c]
+                        if a_data[c] != 1.0: ww *= psi[k,j,i,c]
                         num_v2 -= ww*(J24[k,j,i,c] + J12[k,j,i,c]*du[k,j,i] + J23[k,j,i,c]*dw[k,j,i])
                     dv_kp1 = num_v2/denom_v if denom_v!=0.0 else 0.0
                     dv[k,j,i] = (1.0-OMEGA)*dv[k,j,i] + OMEGA*dv_kp1
@@ -357,7 +370,7 @@ def compute_flow_3d(
                     num_w2 = num_w
                     for c in range(C):
                         ww = weight[k,j,i,c]
-                        if a_data != 1.0: ww *= psi[k,j,i,c]
+                        if a_data[c] != 1.0: ww *= psi[k,j,i,c]
                         num_w2 -= ww*(J34[k,j,i,c] + J13[k,j,i,c]*du[k,j,i] + J23[k,j,i,c]*dv[k,j,i])
                     dw_kp1 = num_w2/denom_w if denom_w!=0.0 else 0.0
                     dw[k,j,i] = (1.0-OMEGA)*dw[k,j,i] + OMEGA*dw_kp1
