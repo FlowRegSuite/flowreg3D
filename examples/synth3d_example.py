@@ -18,8 +18,8 @@ if __name__ == "__main__":
 
         w = f["w"][:]
 
-    frame1 = np.permute_dims(clean[0], (1, 2, 0)).astype(float)
-    frame2 = np.permute_dims(clean[1], (1, 2, 0)).astype(float)
+    frame1 = np.transpose(clean[0], (1, 2, 0)).astype(float)
+    frame2 = np.transpose(clean[1], (1, 2, 0)).astype(float)
     frame1 = cv2.GaussianBlur(frame1, None, 1.5)
     frame2 = cv2.GaussianBlur(frame2, None, 1.5)
 
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     #for i in range(2):
     #    frame1[:, :, i] = cv2.normalize(frame1[..., i], None, 0, 1, cv2.NORM_MINMAX)
     #    frame2[:, :, i] = cv2.normalize(frame2[..., i], None, 0, 1, cv2.NORM_MINMAX)
-    w = np.permute_dims(w, (1, 2, 0))
+    w = np.transpose(w, (1, 2, 0))
 
     print(frame1.shape)
 
