@@ -316,9 +316,9 @@ def get_displacement(fixed, moving, alpha=(2, 2, 2), update_lag=10, iterations=2
     flow[:, :, :, 1] = v[1:-1, 1:-1, 1:-1]
     flow[:, :, :, 2] = w[1:-1, 1:-1, 1:-1]
     if min_level > 0:
-        # Resize to original dimensions
+        # Resize to original dimensions using the custom resize function
         flow_resized = np.zeros((p, m, n, 3), dtype=np.float64)
         for i in range(3):
-            flow_resized[:, :, :, i] = resize(flow[:, :, :, i], (p, m, n), order=3)
+            flow_resized[:, :, :, i] = resize(flow[:, :, :, i], (p, m, n))
         flow = flow_resized
     return flow
