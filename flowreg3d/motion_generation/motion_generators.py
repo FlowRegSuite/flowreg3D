@@ -455,3 +455,15 @@ def get_test_3d_generator():
     generator.add_augmentor(Translational3DFlowAugmentor(max_disp=5, p=1.0))
     generator.add_augmentor(Rotational3DFlowAugmentor(max_rot_deg=3, p=1.0))
     return generator
+
+
+def get_high_disp_3d_generator():
+    """Create a 3D flow generator with high displacement emphasizing expansion and jitter."""
+    generator = FlowGenerator3D()
+    generator.add_augmentor(Expansion3DFlowAugmentor(max_magnitude=0.15, p=1.0))
+    generator.add_augmentor(Expansion3DFlowAugmentor(max_magnitude=0.1, p=1.0))
+    generator.add_augmentor(Jitter3DFlowAugmentor(max_magnitude=3, p=1.0))
+    generator.add_augmentor(Translational3DFlowAugmentor(max_disp=8, p=1.0))
+    generator.add_augmentor(Rotational3DFlowAugmentor(max_rot_deg=3, p=1.0))
+    generator.add_augmentor(Random3DFlowAugmentor(max_magnitude=2.5, p=1.0))
+    return generator

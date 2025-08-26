@@ -3,7 +3,7 @@ from scipy.ndimage import median_filter, map_coordinates
 from skimage.transform import resize
 
 from flowreg3d.core.level_solver_3d import compute_flow_3d
-from flowreg3d.util.resize_util_3D import imresize_fused_gauss_cubic
+from flowreg3d.util.resize_util_3D import imresize_fused_gauss_cubic3D
 
 
 def matlab_gradient(f, spacing):
@@ -17,7 +17,7 @@ def matlab_gradient(f, spacing):
     return grad
 
 
-resize = imresize_fused_gauss_cubic
+resize = imresize_fused_gauss_cubic3D
 
 
 def imregister_wrapper(f2_level, u, v, w, f1_level, interpolation_method='cubic'):

@@ -13,6 +13,7 @@ from .motion_generators import (
     get_default_3d_generator,
     get_low_disp_3d_generator,
     get_test_3d_generator,
+    get_high_disp_3d_generator,
 )
 
 # Define public API explicitly
@@ -28,4 +29,5 @@ __all__ = [
     'get_default_3d_generator',
     'get_low_disp_3d_generator',
     'get_test_3d_generator',
+    'get_high_disp_3d_generator',
 ]
