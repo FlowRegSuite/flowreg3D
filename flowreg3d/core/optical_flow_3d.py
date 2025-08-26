@@ -2,8 +2,8 @@ import numpy as np
 from scipy.ndimage import median_filter, map_coordinates
 from skimage.transform import resize
 
-from flowreg3d.core import compute_flow_3d
-from flowreg3d.util.resize_util import imresize_numba, imresize_fused_gauss_cubic
+from flowreg3d.core.level_solver_3d import compute_flow_3d
+from flowreg3d.util.resize_util_3D import imresize_fused_gauss_cubic
 
 
 def matlab_gradient(f, spacing):
