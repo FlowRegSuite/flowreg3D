@@ -422,16 +422,20 @@ def visualize_in_napari(original, displaced, corrected, flow_est=None, flow_gt=N
     viewer.add_image(corrected, name="Corrected (Motion Compensated)", colormap='cyan', blending='additive',
         contrast_limits=[0, 1], visible=True, opacity=1.0)
 
-    # Add flow magnitude for estimated flow
+    # Add flow magnitude for estimated flow - add channel dimension for napari
     if flow_est is not None:
         flow_est_magnitude = np.sqrt(flow_est[:, :, :, 0] ** 2 + flow_est[:, :, :, 1] ** 2 + flow_est[:, :, :, 2] ** 2)
+        # Add empty channel dimension to match image dimensions
+        flow_est_magnitude = flow_est_magnitude[..., np.newaxis]
         viewer.add_image(flow_est_magnitude, name="Estimated Flow Magnitude", colormap='viridis', visible=False,
             contrast_limits=[0, flow_est_magnitude.max()])
 
-    # Add flow magnitude for ground truth
+    # Add flow magnitude for ground truth - use same colormap as estimated
     if flow_gt is not None:
         flow_gt_magnitude = np.sqrt(flow_gt[:, :, :, 0] ** 2 + flow_gt[:, :, :, 1] ** 2 + flow_gt[:, :, :, 2] ** 2)
-        viewer.add_image(flow_gt_magnitude, name="Ground Truth Flow Magnitude", colormap='plasma', visible=False,
+        # Add empty channel dimension to match image dimensions
+        flow_gt_magnitude = flow_gt_magnitude[..., np.newaxis]
+        viewer.add_image(flow_gt_magnitude, name="Ground Truth Flow Magnitude", colormap='viridis', visible=False,
             contrast_limits=[0, flow_gt_magnitude.max()])
 
         # Add flow error magnitude
@@ -524,9 +528,9 @@ def main():
     # Set up flow parameters for 3D optical flow
     # get_displacement expects: alpha=(2,2,2), update_lag=10, iterations=20, min_level=0, 
     # levels=50, eta=0.8, a_smooth=0.5, a_data=0.45, const_assumption='gc', uvw=None, weight=None
-    flow_params = {'alpha': (8, 8, 8),  # 3D alpha values for x, y, z axes
+    flow_params = {'alpha': (1, 1, 1),  # 3D alpha values for x, y, z axes
         'iterations': 100, 'a_data': 0.45, 'a_smooth': 1.0, 'weight': np.array([0.5, 0.5], dtype=np.float64),
-        'levels': 50, 'eta': 0.8, 'update_lag': 5, 'min_level': 5,  # Use fast mode for initial testing
+        'levels': 50, 'eta': 0.8, 'update_lag': 5, 'min_level': 0,
         'const_assumption': 'gc',  # gradient constancy
         'uvw': None  # Initial flow field
     }
