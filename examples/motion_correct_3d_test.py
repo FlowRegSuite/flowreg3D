@@ -20,6 +20,7 @@ from scipy.ndimage import zoom, gaussian_filter
 from flowreg3d.core.optical_flow_3d import get_displacement, imregister_wrapper
 from flowreg3d.motion_generation.motion_generators import (get_default_3d_generator, get_low_disp_3d_generator,
                                                            get_test_3d_generator, get_high_disp_3d_generator)
+from flowreg3d.util.random import fix_seed
 
 
 def process_3d_stack(video_data):
@@ -469,6 +470,10 @@ def main():
     print("=" * 60)
     print("3D Motion Correction Test with Synthetic Displacement")
     print("=" * 60)
+    
+    # Fix random seed for reproducibility
+    fix_seed(seed=1, deterministic=True, verbose=True)
+    print()
 
     # Get the script's directory and navigate to data folder
     script_dir = Path(__file__).parent
@@ -528,7 +533,7 @@ def main():
     # Set up flow parameters for 3D optical flow
     # get_displacement expects: alpha=(2,2,2), update_lag=10, iterations=20, min_level=0, 
     # levels=50, eta=0.8, a_smooth=0.5, a_data=0.45, const_assumption='gc', uvw=None, weight=None
-    flow_params = {'alpha': (1, 1, 1),  # 3D alpha values for x, y, z axes
+    flow_params = {'alpha': (0.5, 0.5, 0.5),  # 3D alpha values for x, y, z axes
         'iterations': 100, 'a_data': 0.45, 'a_smooth': 1.0, 'weight': np.array([0.5, 0.5], dtype=np.float64),
         'levels': 50, 'eta': 0.8, 'update_lag': 5, 'min_level': 0,
         'const_assumption': 'gc',  # gradient constancy
