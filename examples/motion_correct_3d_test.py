@@ -3,7 +3,7 @@
 
 This script:
 1. Loads a pre-aligned HDF5 video using pyflowreg readers
-2. Processes it (resize 50%, crop 25px boundaries, normalize)  
+2. Processes it (resize 50%, crop 25px boundaries, normalize)
 3. Creates a second frame with synthetic 3D motion displacements
 4. Performs 3D motion correction using compute_flow
 5. Visualizes original, displaced, and corrected volumes in napari
@@ -26,10 +26,10 @@ from flowreg3d.util.random import fix_seed
 def process_3d_stack(video_data):
     """
     Process 3D stack: resize 50%, crop 25px boundaries, normalize.
-    
+
     Args:
         video_data: Input video array (T, Y, X) or (T, Y, X, C)
-    
+
     Returns:
         Processed video array
     """
@@ -40,11 +40,12 @@ def process_3d_stack(video_data):
     video = video_data.astype(np.float32)
 
     # Step 1: Resize to 50% (0.5x)
-    print("  Resizing to 50%...")
+    resize_factor = 1
+    print(f"  Resizing to {100*resize_factor}%...")
     if video.ndim == 4:  # Has channels
-        zoom_factors = (1.0, 0.5, 0.5, 1.0)  # Don't resize time or channels
+        zoom_factors = (1.0, resize_factor, resize_factor, 1.0)  # Don't resize time or channels
     else:
-        zoom_factors = (1.0, 0.5, 0.5)  # Don't resize time
+        zoom_factors = (1.0, resize_factor, resize_factor)  # Don't resize time
 
     video_resized = zoom(video, zoom_factors, order=1)  # Linear interpolation
     print(f"  After resize: {video_resized.shape}")
@@ -80,11 +81,11 @@ def process_3d_stack(video_data):
 def warp_volume_bw3d_torch(volume, flow):
     """
     Backward warp a 3D volume using torch grid_sample (fast GPU/CPU operation).
-    
+
     Args:
         volume: Input volume (Z, Y, X) or (Z, Y, X, C)
         flow: Flow field (Z, Y, X, 3) where last dim is (dz, dy, dx)
-    
+
     Returns:
         Warped volume with same shape as input
     """
@@ -126,11 +127,11 @@ def warp_volume_bw3d_torch(volume, flow):
 def warp_volume_splat3d(volume, flow):
     """
     Forward warp a 3D volume using splatting (fast scatter operation).
-    
+
     Args:
         volume: Input volume (Z, Y, X) or (Z, Y, X, C)
         flow: Flow field (Z, Y, X, 3) where last dim is (dz, dy, dx)
-    
+
     Returns:
         Warped volume with same shape as input
     """
@@ -196,11 +197,11 @@ def warp_volume_splat3d(volume, flow):
 def warp_volume_pc3d(volume, flow):
     """
     Forward warp a 3D volume using griddata (scatter operation).
-    
+
     Args:
         volume: Input volume (Z, Y, X) or (Z, Y, X, C)
         flow: Flow field (Z, Y, X, 3) where last dim is (dz, dy, dx)
-    
+
     Returns:
         Warped volume with same shape as input
     """
@@ -245,12 +246,12 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
     """
     Compute 3D optical flow between two frames.
     Handles preprocessing internally.
-    
+
     Args:
         frame1: Reference frame (Z, Y, X) or (Z, Y, X, C)
         frame2: Target frame (Z, Y, X) or (Z, Y, X, C)
         flow_params: Dictionary of flow parameters
-    
+
     Returns:
         Flow field (Z, Y, X, 3) where last dim is (dz, dy, dx)
     """
@@ -311,11 +312,11 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
 def create_displaced_frame_with_generator(video, generator_type='high_disp'):
     """
     Create a second 3D frame with synthetic motion displacements.
-    
+
     Args:
         video: Input video array (Z, Y, X) or (Z, Y, X, C)
         generator_type: Type of motion generator ('default', 'low_disp', 'test', 'high_disp')
-    
+
     Returns:
         Tuple of (displaced_video, ground_truth_flow)
     """
@@ -373,12 +374,12 @@ def create_displaced_frame_with_generator(video, generator_type='high_disp'):
 def evaluate_flow_accuracy(flow_est, flow_gt, boundary=25):
     """
     Evaluate flow estimation accuracy using End-Point Error (EPE).
-    
+
     Args:
         flow_est: Estimated flow field (Z, Y, X, 3)
         flow_gt: Ground truth flow field (Z, Y, X, 3)
         boundary: Pixels to exclude from boundaries
-    
+
     Returns:
         EPE value
     """
@@ -399,7 +400,7 @@ def evaluate_flow_accuracy(flow_est, flow_gt, boundary=25):
 def visualize_in_napari(original, displaced, corrected, flow_est=None, flow_gt=None):
     """
     Visualize original, displaced, and corrected volumes in napari.
-    
+
     Args:
         original: Original processed video
         displaced: Displaced video
@@ -470,7 +471,7 @@ def main():
     print("=" * 60)
     print("3D Motion Correction Test with Synthetic Displacement")
     print("=" * 60)
-    
+
     # Fix random seed for reproducibility
     fix_seed(seed=1, deterministic=True, verbose=True)
     print()
@@ -531,11 +532,11 @@ def main():
     print("\nPreparing frames for motion correction...")
 
     # Set up flow parameters for 3D optical flow
-    # get_displacement expects: alpha=(2,2,2), update_lag=10, iterations=20, min_level=0, 
+    # get_displacement expects: alpha=(2,2,2), update_lag=10, iterations=20, min_level=0,
     # levels=50, eta=0.8, a_smooth=0.5, a_data=0.45, const_assumption='gc', uvw=None, weight=None
-    flow_params = {'alpha': (0.5, 0.5, 0.5),  # 3D alpha values for x, y, z axes
+    flow_params = {'alpha': (0.25, 0.25, 0.25),  # 3D alpha values for x, y, z axes
         'iterations': 100, 'a_data': 0.45, 'a_smooth': 1.0, 'weight': np.array([0.5, 0.5], dtype=np.float64),
-        'levels': 50, 'eta': 0.8, 'update_lag': 5, 'min_level': 0,
+        'levels': 50, 'eta': 0.8, 'update_lag': 5, 'min_level': 5,
         'const_assumption': 'gc',  # gradient constancy
         'uvw': None  # Initial flow field
     }
