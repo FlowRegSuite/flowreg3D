@@ -1,10 +1,10 @@
 """
-Optical Flow Options Configuration Module (Python) - Fixed Version
-------------------------------------------------------------------
+3D Optical Flow Options Configuration Module
+---------------------------------------------
 
-Python port of MATLAB `OF_options` using Pydantic v2 for validation/IO
-with full MATLAB compatibility including proper private attributes,
-preregistration, and edge case handling.
+3D version of OF_options with minimal changes from 2D version.
+Handles volumetric time series with (T,Z,Y,X,C) data.
+Based on Python port of MATLAB `OF_options` using Pydantic v2.
 """
 from __future__ import annotations
 
@@ -26,12 +26,13 @@ try:
 except ImportError:
     gaussian_filter = None
 
-# Optional IO backends
+# Import 3D IO backends
 try:
-    from flowreg3d.util.io.hdf5 import HDF5FileReader, HDF5FileWriter
-    from flowreg3d.util.io.mdf import MDFFileReader
-    from flowreg3d.util.io._base import VideoReader, VideoWriter
-    from flowreg3d.util.io.tiff import TIFFStackReader, TIFFStackWriter
+    from flowreg3d.util.io._base_3d import VideoReader3D as VideoReader, VideoWriter3D as VideoWriter
+    from flowreg3d.util.io.tiff_3d import TIFFFileReader3D, TIFFFileWriter3D
+    # Fallback to pyflowreg for other formats that work with 3D data
+    from pyflowreg.util.io.hdf5 import HDF5FileReader, HDF5FileWriter
+    from pyflowreg.util.io.mdf import MDFFileReader
 except ImportError:
     # Use placeholder classes instead of object to avoid isinstance() always returning True
     class _VideoReaderPlaceholder: 
@@ -45,8 +46,8 @@ except ImportError:
     HDF5FileReader = None
     HDF5FileWriter = None
     MDFFileReader = None
-    TIFFStackReader = None
-    TIFFStackWriter = None
+    TIFFFileReader3D = None
+    TIFFFileWriter3D = None
 
 
 # Enums
@@ -112,25 +113,25 @@ class OFOptions(BaseModel):
     output_file_name: Optional[str] = Field(None, description="Custom output filename")
     channel_idx: Optional[List[int]] = Field(None, description="Channel indices to process")
 
-    # Flow parameters
-    alpha: Union[float, Tuple[float, float]] = Field((1.5, 1.5), description="Regularization strength")
+    # Flow parameters - now supports 3D (defaults from motion_correct_3d_test)
+    alpha: Union[float, Tuple[float, float], Tuple[float, float, float]] = Field((0.25, 0.25, 0.25), description="Regularization strength for (z,y,x) axes")
     weight: Union[List[float], np.ndarray] = Field([0.5, 0.5], description="Channel weights")
     levels: StrictInt = Field(100, ge=1, description="Number of pyramid levels")
-    min_level: StrictInt = Field(-1, ge=-1, description="Min pyramid level; -1 = from preset")
+    min_level: StrictInt = Field(5, ge=-1, description="Min pyramid level; -1 = from preset, default 5 for 3D")
     quality_setting: QualitySetting = Field(QualitySetting.QUALITY, description="Quality preset")
     eta: float = Field(0.8, gt=0, le=1, description="Downsample factor per level")
     update_lag: StrictInt = Field(5, ge=1, description="Update lag for non-linear diffusion")
-    iterations: StrictInt = Field(50, ge=1, description="Iterations per level")
+    iterations: StrictInt = Field(100, ge=1, description="Iterations per level")
     a_smooth: float = Field(1.0, ge=0, description="Smoothness diffusion parameter")
     a_data: float = Field(0.45, gt=0, le=1, description="Data-term diffusion parameter")
 
-    # Preprocessing
+    # Preprocessing - now includes z dimension
     sigma: Any = Field(
-        [[1.0, 1.0, 0.1], [1.0, 1.0, 0.1]],
-        description="Gaussian [sx, sy, st] per-channel"
+        [[1.0, 1.0, 1.0, 0.1], [1.0, 1.0, 1.0, 0.1]],
+        description="Gaussian [sx, sy, sz, st] per-channel for 3D"
     )
     bin_size: StrictInt = Field(1, ge=1, description="Spatial binning factor")
-    buffer_size: StrictInt = Field(400, ge=1, description="Frame buffer size")
+    buffer_size: StrictInt = Field(10, ge=1, description="Volume buffer size for 3D")
 
     # Reference
     reference_frames: Union[List[int], str, Path, np.ndarray] = Field(
@@ -166,24 +167,29 @@ class OFOptions(BaseModel):
     @field_validator('alpha', mode='before')
     @classmethod
     def normalize_alpha(cls, v):
-        """Normalize alpha to always be a 2-tuple of positive floats."""
+        """Normalize alpha to always be a 3-tuple of positive floats for 3D."""
         if isinstance(v, (int, float)):
             if v <= 0:
                 raise ValueError("Alpha must be positive")
-            return (float(v), float(v))
+            return (float(v), float(v), float(v))
         elif isinstance(v, (list, tuple)):
             if len(v) == 1:
                 if v[0] <= 0:
                     raise ValueError("Alpha must be positive")
-                return (float(v[0]), float(v[0]))
+                return (float(v[0]), float(v[0]), float(v[0]))
             elif len(v) == 2:
                 if v[0] <= 0 or v[1] <= 0:
                     raise ValueError("All alpha values must be positive")
-                return (float(v[0]), float(v[1]))
+                # Extend 2D to 3D by duplicating first value for Z
+                return (float(v[0]), float(v[0]), float(v[1]))
+            elif len(v) == 3:
+                if v[0] <= 0 or v[1] <= 0 or v[2] <= 0:
+                    raise ValueError("All alpha values must be positive")
+                return (float(v[0]), float(v[1]), float(v[2]))
             else:
-                raise ValueError("Alpha must be scalar or 2-element tuple")
+                raise ValueError("Alpha must be scalar, 2-element, or 3-element tuple")
         else:
-            raise ValueError("Alpha must be scalar or 2-element tuple")
+            raise ValueError("Alpha must be scalar, 2-element, or 3-element tuple")
 
     @field_validator('weight', mode='before')
     @classmethod
@@ -208,18 +214,24 @@ class OFOptions(BaseModel):
     @field_validator('sigma', mode='before')
     @classmethod
     def normalize_sigma(cls, v):
-        """Normalize sigma to correct shape."""
+        """Normalize sigma to correct shape for 3D."""
         sig = np.asarray(v, dtype=float)
         if sig.ndim == 1:
-            if sig.size != 3:
-                raise ValueError("1D sigma must be [sx, sy, st]")
-            return sig.reshape(1, 3).tolist()
+            if sig.size == 3:
+                # Convert 2D sigma to 3D by adding sz=1.0
+                sig = np.insert(sig, 2, 1.0)
+            elif sig.size != 4:
+                raise ValueError("1D sigma must be [sx, sy, sz, st] or [sx, sy, st] for 3D")
+            return sig.reshape(1, 4).tolist()
         elif sig.ndim == 2:
-            if sig.shape[1] != 3:
-                raise ValueError("2D sigma must be (n_channels, 3)")
+            if sig.shape[1] == 3:
+                # Convert 2D sigma to 3D by adding sz=1.0
+                sig = np.insert(sig, 2, 1.0, axis=1)
+            elif sig.shape[1] != 4:
+                raise ValueError("2D sigma must be (n_channels, 4) for 3D")
             return sig.tolist()
         else:
-            raise ValueError("Sigma must be [sx,sy,st] or (n_channels, 3)")
+            raise ValueError("Sigma must be [sx,sy,sz,st] or (n_channels, 4) for 3D")
         return v
 
     @model_validator(mode="after")

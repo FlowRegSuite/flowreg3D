@@ -9,10 +9,10 @@ from typing import Any, Optional, Tuple, List, Callable, Dict
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-from flowreg3d import get_displacement
-from flowreg3d.core.optical_flow_3d import imregister_wrapper
 from flowreg3d._runtime import RuntimeContext
-from flowreg3d.util.image_processing import normalize, apply_gaussian_filter
+from flowreg3d.core.optical_flow_3d import get_displacement, imregister_wrapper
+from flowreg3d.util.image_processing_3D import normalize, apply_gaussian_filter
+from flowreg3d.motion_correction.OF_options_3D import OutputFormat
 
 # Import to trigger executor registration (side effect)
 import flowreg3d.motion_correction.parallelization
@@ -22,7 +22,7 @@ import flowreg3d.motion_correction.parallelization
 class RegistrationConfig:
     """Simplified configuration."""
     n_jobs: int = -1  # -1 = all cores
-    batch_size: int = 100
+    batch_size: int = 10  # Smaller for 3D volumes
     verbose: bool = False
     parallelization: Optional[str] = None  # None = auto-select, or 'sequential', 'threading', 'multiprocessing'
 
@@ -74,32 +74,36 @@ class BatchMotionCorrector:
         executor_name = self.config.parallelization
         
         if executor_name is None:
-            # Auto-select based on available parallelization
+            # Auto-select based on available parallelization (3D versions)
             available = RuntimeContext.get('available_parallelization', set())
-            if 'multiprocessing' in available:
-                executor_name = 'multiprocessing'
-            elif 'threading' in available:
-                executor_name = 'threading'
+            if 'multiprocessing3d' in available:
+                executor_name = 'multiprocessing3d'
+            elif 'threading3d' in available:
+                executor_name = 'threading3d'
             else:
-                executor_name = 'sequential'
+                executor_name = 'sequential3d'
+        else:
+            # Add 3d suffix if not already present
+            if not executor_name.endswith('3d'):
+                executor_name = executor_name + '3d'
         
         # Get executor class
         executor_class = RuntimeContext.get_parallelization_executor(executor_name)
         if executor_class is None:
-            # Fallback to sequential if requested executor not available
+            # Fallback to sequential3d if requested executor not available
             if not self.config.verbose:
-                print(f"Warning: {executor_name} executor not available, falling back to sequential")
-            executor_class = RuntimeContext.get_parallelization_executor('sequential')
+                print(f"Warning: {executor_name} executor not available, falling back to sequential3d")
+            executor_class = RuntimeContext.get_parallelization_executor('sequential3d')
             
-            # If sequential is also not available, import and register it
+            # If sequential3d is also not available, import and register it
             if executor_class is None:
-                from flowreg3d.motion_correction.parallelization.sequential import SequentialExecutor
-                SequentialExecutor.register()
-                executor_class = RuntimeContext.get_parallelization_executor('sequential')
+                from flowreg3d.motion_correction.parallelization.sequential_3d import SequentialExecutor3D
+                SequentialExecutor3D.register()
+                executor_class = RuntimeContext.get_parallelization_executor('sequential3d')
                 
                 # Final safety check
                 if executor_class is None:
-                    raise RuntimeError("Could not load any executor, including sequential fallback")
+                    raise RuntimeError("Could not load any executor, including sequential3d fallback")
         
         # Create executor instance
         self.executor = executor_class(n_workers=self.n_workers)
@@ -159,7 +163,7 @@ class BatchMotionCorrector:
                 from flowreg3d.util.io.factory import get_video_file_writer
                 
                 # Use ArrayWriter for displacements when main output is ARRAY
-                if self.options.output_format == 'ARRAY':
+                if self.options.output_format == OutputFormat.ARRAY:
                     self.w_writer = get_video_file_writer(
                         None,  # Path ignored for ARRAY format
                         'ARRAY'
@@ -170,7 +174,7 @@ class BatchMotionCorrector:
                     self.w_writer = get_video_file_writer(
                         str(w_path),
                         'HDF5',
-                        dataset_names=['u', 'v']
+                        dataset_names=['u', 'v', 'w']  # 3D flow components
                     )
             except Exception as e:
                 warnings.warn(f"Failed to create displacement writer: {e}. Displacements will not be saved.")
@@ -184,21 +188,22 @@ class BatchMotionCorrector:
         else:
             self.reference_raw = reference_frame.astype(np.float64)
 
-        H, W = self.reference_raw.shape[:2]
-        n_channels = self.reference_raw.shape[2] if self.reference_raw.ndim == 3 else 1
+        # For 3D: shape is (Z, Y, X, C) or (Z, Y, X)
+        Z, Y, X = self.reference_raw.shape[:3]
+        n_channels = self.reference_raw.shape[3] if self.reference_raw.ndim == 4 else 1
 
-        # Setup weights
-        self.weight = np.ones((H, W, n_channels), dtype=np.float64)
+        # Setup weights for 3D
+        self.weight = np.ones((Z, Y, X, n_channels), dtype=np.float64)
         if hasattr(self.options, 'get_weight_at'):
             for c in range(n_channels):
-                self.weight[:, :, c] = self.options.get_weight_at(c, n_channels)
+                self.weight[:, :, :, c] = self.options.get_weight_at(c, n_channels)
         else:
             weight_1d = np.asarray(getattr(self.options, 'weight', [1.0] * n_channels))
             weight_sum = weight_1d.sum()
             if weight_sum > 0:
                 weight_1d = weight_1d / weight_sum
             for c in range(n_channels):
-                self.weight[:, :, c] = weight_1d[c] if c < len(weight_1d) else 1.0 / n_channels
+                self.weight[:, :, :, c] = weight_1d[c] if c < len(weight_1d) else 1.0 / n_channels
 
         # Preprocess reference (MATLAB order: normalize then filter)
         self.reference_proc = self._preprocess_frames(self.reference_raw)
@@ -237,7 +242,7 @@ class BatchMotionCorrector:
         }
 
         if w_init is not None:
-            flow_params['uv'] = w_init
+            flow_params['uvw'] = w_init
 
         # Note: get_displacement expects (reference, moving)
         return get_displacement(ref_proc, frame_proc, **flow_params)
@@ -303,12 +308,12 @@ class BatchMotionCorrector:
             _, w = self._process_batch_parallel(
                 first_batch[:n_init],
                 first_batch_proc[:n_init],
-                np.zeros((self.reference_proc.shape[0], self.reference_proc.shape[1], 2)),
+                np.zeros((self.reference_proc.shape[0], self.reference_proc.shape[1], self.reference_proc.shape[2], 3)),
                 task_id="initial_w"  # Don't count toward main progress
             )
         else:  # Serial for very few frames
-            H, W = self.reference_proc.shape[:2]
-            w = np.zeros((n_init, H, W, 2), dtype=np.float32)
+            Z, Y, X = self.reference_proc.shape[:3]
+            w = np.zeros((n_init, Z, Y, X, 3), dtype=np.float32)
             for t in range(n_init):
                 w[t] = self._compute_flow_single(
                     first_batch_proc[t],
@@ -333,22 +338,23 @@ class BatchMotionCorrector:
         start_idx = batch_proc.shape[0] - n_ref_frames
 
         # Compensate and average per channel
-        H, W, C = self.reference_proc.shape
+        Z, Y, X, C = self.reference_proc.shape
         new_ref = np.zeros_like(self.reference_proc)
 
         for c in range(C):
-            compensated = np.zeros((n_ref_frames, H, W), dtype=np.float64)
+            compensated = np.zeros((n_ref_frames, Z, Y, X), dtype=np.float64)
             for t in range(n_ref_frames):
-                frame_c = batch_proc[start_idx + t, :, :, c] if C > 1 else batch_proc[start_idx + t, :, :, 0]
+                volume_c = batch_proc[start_idx + t, :, :, :, c] if C > 1 else batch_proc[start_idx + t, :, :, :, 0]
                 interp_method = getattr(self.options, 'interpolation_method', 'cubic')
                 compensated[t] = imregister_wrapper(
-                    frame_c,
-                    w[start_idx + t, :, :, 0],
-                    w[start_idx + t, :, :, 1],
-                    self.reference_proc[:, :, c] if C > 1 else self.reference_proc[:, :, 0],
+                    volume_c,
+                    w[start_idx + t, :, :, :, 0],  # u displacement
+                    w[start_idx + t, :, :, :, 1],  # v displacement
+                    w[start_idx + t, :, :, :, 2],  # w displacement
+                    self.reference_proc[:, :, :, c] if C > 1 else self.reference_proc[:, :, :, 0],
                     interpolation_method=interp_method
                 )
-            new_ref[:, :, c] = np.mean(compensated, axis=0)
+            new_ref[:, :, :, c] = np.mean(compensated, axis=0)
 
         self.reference_proc = new_ref
 
@@ -378,7 +384,7 @@ class BatchMotionCorrector:
                 batch_start = time()
 
                 # Read batch
-                batch = self.video_reader.read_batch()  # (T,H,W,C)
+                batch = self.video_reader.read_batch()  # (T,Z,Y,X,C)
 
                 # Preprocess entire batch (normalize -> filter)
                 batch_proc = self._preprocess_frames(batch)
@@ -403,20 +409,22 @@ class BatchMotionCorrector:
                     else:
                         self.w_init = np.mean(w, axis=0)
 
-                # Compute statistics
-                disp_magnitude = np.sqrt(w[:, :, :, 0] ** 2 + w[:, :, :, 1] ** 2)
-                self.mean_disp.extend(np.mean(disp_magnitude, axis=(1, 2)).tolist())
-                self.max_disp.extend(np.max(disp_magnitude, axis=(1, 2)).tolist())
+                # Compute statistics for 3D
+                disp_magnitude = np.sqrt(w[:, :, :, :, 0] ** 2 + w[:, :, :, :, 1] ** 2 + w[:, :, :, :, 2] ** 2)
+                self.mean_disp.extend(np.mean(disp_magnitude, axis=(1, 2, 3)).tolist())
+                self.max_disp.extend(np.max(disp_magnitude, axis=(1, 2, 3)).tolist())
 
-                # Divergence and translation
+                # Divergence and translation for 3D
                 for t in range(w.shape[0]):
-                    du_dx = np.gradient(w[t, :, :, 0], axis=1)
-                    dv_dy = np.gradient(w[t, :, :, 1], axis=0)
-                    self.mean_div.append(float(np.mean(du_dx + dv_dy)))
+                    du_dx = np.gradient(w[t, :, :, :, 0], axis=2)  # x-axis is dim 2
+                    dv_dy = np.gradient(w[t, :, :, :, 1], axis=1)  # y-axis is dim 1
+                    dw_dz = np.gradient(w[t, :, :, :, 2], axis=0)  # z-axis is dim 0
+                    self.mean_div.append(float(np.mean(du_dx + dv_dy + dw_dz)))
 
-                    u_mean = float(np.mean(w[t, :, :, 0]))
-                    v_mean = float(np.mean(w[t, :, :, 1]))
-                    self.mean_translation.append(float(np.sqrt(u_mean ** 2 + v_mean ** 2)))
+                    u_mean = float(np.mean(w[t, :, :, :, 0]))
+                    v_mean = float(np.mean(w[t, :, :, :, 1]))
+                    w_mean = float(np.mean(w[t, :, :, :, 2]))
+                    self.mean_translation.append(float(np.sqrt(u_mean ** 2 + v_mean ** 2 + w_mean ** 2)))
 
                 # Write results
                 self.video_writer.write_frames(registered)
@@ -424,8 +432,8 @@ class BatchMotionCorrector:
                 # Save flows if requested
                 if getattr(self.options, 'save_w', False):
                     if self.w_writer is not None:
-                        # w has shape (T, H, W, 2) where last dimension is [u, v]
-                        # Writer with dataset_names=['u', 'v'] will split into separate datasets
+                        # w has shape (T, Z, Y, X, 3) where last dimension is [u, v, w]
+                        # Writer with dataset_names=['u', 'v', 'w'] will split into separate datasets
                         self.w_writer.write_frames(w)
                     else:
                         warnings.warn("Displacement saving was requested but writer could not be initialized. Skipping displacement save.")

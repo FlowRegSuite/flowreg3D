@@ -1,5 +1,5 @@
 """
-Multiprocessing executor - processes frames in parallel using shared memory.
+Multiprocessing executor for 3D volumes - processes volumes in parallel using shared memory.
 """
 
 import os
@@ -7,7 +7,7 @@ from multiprocessing import shared_memory
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Callable, Tuple, Optional, Dict, Any
 import numpy as np
-from .base import BaseExecutor
+from .base_3d import BaseExecutor3D
 
 
 # Global dictionary to store shared memory references in worker processes
@@ -38,21 +38,21 @@ def _init_shared(shm_specs: Dict[str, Tuple[str, tuple, str]]):
         _SHM[key] = (shm, arr)
 
 
-def _process_frame_worker(
+def _process_volume_worker(
     t: int,
     interpolation_method: str,
     flow_param_scalars: dict
 ) -> int:
     """
-    Worker function to process a single frame using shared memory.
+    Worker function to process a single 3D volume using shared memory.
     
     Args:
-        t: Frame index
+        t: Volume index
         interpolation_method: Interpolation method for registration
         flow_param_scalars: Dictionary of scalar flow parameters (non-array)
         
     Returns:
-        Frame index (for tracking completion)
+        Volume index (for tracking completion)
     """
     # Import functions inside worker to avoid pickling issues with Numba
     from flowreg3d.core.optical_flow_3d import get_displacement, imregister_wrapper
@@ -71,19 +71,20 @@ def _process_frame_worker(
     if 'weight' in _SHM:
         flow_params['weight'] = _SHM['weight'][1]
     
-    # Compute optical flow with all parameters
+    # Compute 3D optical flow with all parameters
     flow = get_displacement(
         ref_proc,
         batch_proc[t],
-        uv=w_init.copy(),
+        uvw=w_init.copy(),
         **flow_params
     )
     
-    # Apply flow field to register the frame
-    reg_frame = imregister_wrapper(
+    # Apply 3D flow field to register the volume
+    reg_volume = imregister_wrapper(
         batch[t],
-        flow[..., 0],
-        flow[..., 1],
+        flow[..., 0],  # u (x) displacement
+        flow[..., 1],  # v (y) displacement
+        flow[..., 2],  # w (z) displacement
         ref_raw,
         interpolation_method=interpolation_method
     )
@@ -91,16 +92,16 @@ def _process_frame_worker(
     # Store results directly in shared memory
     w_out[t] = flow.astype(np.float32, copy=False)
     
-    # Handle case where registered frame might have fewer channels
-    if reg_frame.ndim < registered.ndim - 1:
-        registered[t, ..., 0] = reg_frame
+    # Handle case where registered volume might have fewer channels
+    if reg_volume.ndim < registered.ndim - 1:
+        registered[t, ..., 0] = reg_volume
     else:
-        registered[t] = reg_frame
+        registered[t] = reg_volume
     
     return t
 
 
-class MultiprocessingExecutor(BaseExecutor):
+class MultiprocessingExecutor3D(BaseExecutor3D):
     """
     Multiprocessing executor using shared memory for zero-copy data sharing.
     
@@ -195,23 +196,23 @@ class MultiprocessingExecutor(BaseExecutor):
         **kwargs
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Process frames in parallel using multiprocessing with shared memory.
+        Process 3D volumes in parallel using multiprocessing with shared memory.
         
         Args:
-            batch: Raw frames to register, shape (T, H, W, C)
-            batch_proc: Preprocessed frames for flow computation, shape (T, H, W, C)
-            reference_raw: Raw reference frame, shape (H, W, C)
-            reference_proc: Preprocessed reference frame, shape (H, W, C)
-            w_init: Initial flow field, shape (H, W, 2)
+            batch: Raw volumes to register, shape (T, Z, Y, X, C)
+            batch_proc: Preprocessed volumes for flow computation, shape (T, Z, Y, X, C)
+            reference_raw: Raw reference volume, shape (Z, Y, X, C)
+            reference_proc: Preprocessed reference volume, shape (Z, Y, X, C)
+            w_init: Initial 3D flow field, shape (Z, Y, X, 3)
             get_displacement_func: Ignored (functions imported in worker)
             imregister_func: Ignored (functions imported in worker)
             interpolation_method: Interpolation method for registration
             **kwargs: Additional parameters including 'flow_params' dict
             
         Returns:
-            Tuple of (registered_frames, flow_fields)
+            Tuple of (registered_volumes, flow_fields)
         """
-        T, H, W, C = batch.shape
+        T, Z, Y, X, C = batch.shape
         
         # Get flow parameters from kwargs
         flow_params = kwargs.get('flow_params', {})
@@ -236,7 +237,7 @@ class MultiprocessingExecutor(BaseExecutor):
         
         # Output arrays (written by workers)
         reg_arr = self._create_shared_output('registered', batch.shape, batch.dtype, shm_specs)
-        flow_arr = self._create_shared_output('flow_fields', (T, H, W, 2), np.float32, shm_specs)
+        flow_arr = self._create_shared_output('flow_fields', (T, Z, Y, X, 3), np.float32, shm_specs)
         
         # Create process pool with shared memory initialization
         with ProcessPoolExecutor(
@@ -244,10 +245,10 @@ class MultiprocessingExecutor(BaseExecutor):
             initializer=_init_shared,
             initargs=(shm_specs,)
         ) as executor:
-            # Submit all frames for processing
+            # Submit all volumes for processing
             futures = [
                 executor.submit(
-                    _process_frame_worker,
+                    _process_volume_worker,
                     t,
                     interpolation_method,
                     flow_param_scalars
@@ -255,7 +256,7 @@ class MultiprocessingExecutor(BaseExecutor):
                 for t in range(T)
             ]
             
-            # Wait for all frames to complete
+            # Wait for all volumes to complete
             for future in as_completed(futures):
                 future.result()  # This will raise any exceptions that occurred
         
@@ -280,11 +281,11 @@ class MultiprocessingExecutor(BaseExecutor):
         info = super().get_info()
         info.update({
             'parallel': True,
-            'description': f'Multiprocessing with shared memory, {self.n_workers} workers',
+            'description': f'3D multiprocessing with shared memory, {self.n_workers} workers',
             'features': ['zero-copy', 'shared-memory', 'true-parallelism']
         })
         return info
 
 
 # Register this executor with RuntimeContext on import
-MultiprocessingExecutor.register()
+MultiprocessingExecutor3D.register()

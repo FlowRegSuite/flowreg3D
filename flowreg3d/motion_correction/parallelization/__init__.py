@@ -1,15 +1,15 @@
 """
-Parallelization executors for motion correction batch processing.
+Parallelization executors for 3D motion correction batch processing.
 """
 
-from .base import BaseExecutor
-from .sequential import SequentialExecutor
-from .threading import ThreadingExecutor
-from .multiprocessing import MultiprocessingExecutor
+from .base_3d import BaseExecutor3D
+from .sequential_3d import SequentialExecutor3D
+from .threading_3d import ThreadingExecutor3D
+from .multiprocessing_3d import MultiprocessingExecutor3D
 
 __all__ = [
-    'BaseExecutor',
-    'SequentialExecutor', 
-    'ThreadingExecutor',
-    'MultiprocessingExecutor',
+    'BaseExecutor3D',
+    'SequentialExecutor3D', 
+    'ThreadingExecutor3D',
+    'MultiprocessingExecutor3D',
 ]

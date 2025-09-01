@@ -1,27 +1,27 @@
 """
-Base executor abstract class for parallelization strategies.
+Base executor abstract class for 3D parallelization strategies.
 """
 
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Optional, Tuple
 import numpy as np
-from ..._runtime import RuntimeContext
+from flowreg3d._runtime import RuntimeContext
 
 
-class BaseExecutor(ABC):
+class BaseExecutor3D(ABC):
     """
-    Abstract base class for parallelization executors.
+    Abstract base class for 3D parallelization executors.
     
     All executors must implement the process_batch method which takes:
-    - Batch of frames to process
+    - Batch of 3D volumes to process
     - Preprocessed batch
-    - Reference frames (raw and preprocessed)
-    - Initial flow field
+    - Reference volumes (raw and preprocessed)
+    - Initial 3D flow field
     - Options and parameters
     
     And returns:
-    - Registered frames
-    - Computed flow fields
+    - Registered volumes
+    - Computed 3D flow fields
     """
     
     def __init__(self, n_workers: Optional[int] = None):
@@ -49,24 +49,24 @@ class BaseExecutor(ABC):
         **kwargs
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Process a batch of frames for motion correction.
+        Process a batch of 3D volumes for motion correction.
         
         Args:
-            batch: Raw frames to register, shape (T, H, W, C)
-            batch_proc: Preprocessed frames for flow computation, shape (T, H, W, C)
-            reference_raw: Raw reference frame, shape (H, W, C)
-            reference_proc: Preprocessed reference frame, shape (H, W, C)
-            w_init: Initial flow field, shape (H, W, 2)
-            get_displacement_func: Function to compute optical flow
-            imregister_func: Function to apply flow field for registration
+            batch: Raw volumes to register, shape (T, Z, Y, X, C)
+            batch_proc: Preprocessed volumes for flow computation, shape (T, Z, Y, X, C)
+            reference_raw: Raw reference volume, shape (Z, Y, X, C)
+            reference_proc: Preprocessed reference volume, shape (Z, Y, X, C)
+            w_init: Initial 3D flow field, shape (Z, Y, X, 3)
+            get_displacement_func: Function to compute 3D optical flow
+            imregister_func: Function to apply 3D flow field for registration
             interpolation_method: Interpolation method for registration
-            progress_callback: Optional callback for per-frame progress (frames_completed)
+            progress_callback: Optional callback for per-volume progress (volumes_completed)
             **kwargs: Additional parameters
             
         Returns:
-            Tuple of (registered_frames, flow_fields) where:
-                registered_frames: shape (T, H, W, C)
-                flow_fields: shape (T, H, W, 2)
+            Tuple of (registered_volumes, flow_fields) where:
+                registered_volumes: shape (T, Z, Y, X, C)
+                flow_fields: shape (T, Z, Y, X, 3)
         """
         pass
     
@@ -97,7 +97,8 @@ class BaseExecutor(ABC):
     @classmethod
     def register(cls):
         """Register this executor with the RuntimeContext."""
-        instance_name = cls.__name__.replace('Executor', '').lower()
+        # Keep 3D suffix to avoid confusion with 2D version
+        instance_name = cls.__name__.replace('Executor', '').lower()  # e.g., SequentialExecutor3D -> sequential3d
         RuntimeContext.register_parallelization_executor(instance_name, cls)
     
     def get_info(self) -> Dict[str, Any]:

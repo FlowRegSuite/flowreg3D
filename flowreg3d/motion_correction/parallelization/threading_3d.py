@@ -1,16 +1,16 @@
 """
-Threading executor - processes frames in parallel using threads.
+Threading executor for 3D volumes - processes volumes in parallel using threads.
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Tuple, Optional
 import numpy as np
-from .base import BaseExecutor
+from .base_3d import BaseExecutor3D
 
 
-class ThreadingExecutor(BaseExecutor):
+class ThreadingExecutor3D(BaseExecutor3D):
     """
-    Threading executor that processes frames in parallel using threads.
+    Threading executor that processes 3D volumes in parallel using threads.
     
     Good for I/O-bound operations or when the GIL is released (e.g., NumPy operations).
     Less efficient than multiprocessing for pure Python CPU-bound operations.
@@ -37,11 +37,11 @@ class ThreadingExecutor(BaseExecutor):
             self.executor.shutdown(wait=True)
             self.executor = None
     
-    def _process_frame(
+    def _process_volume(
         self,
         t: int,
-        frame: np.ndarray,
-        frame_proc: np.ndarray,
+        volume: np.ndarray,
+        volume_proc: np.ndarray,
         reference_raw: np.ndarray,
         reference_proc: np.ndarray,
         w_init: np.ndarray,
@@ -51,41 +51,42 @@ class ThreadingExecutor(BaseExecutor):
         flow_params: dict
     ) -> Tuple[int, np.ndarray, np.ndarray]:
         """
-        Process a single frame.
+        Process a single 3D volume.
         
         Args:
-            t: Frame index
-            frame: Raw frame to register
-            frame_proc: Preprocessed frame
-            reference_raw: Raw reference frame
-            reference_proc: Preprocessed reference frame
-            w_init: Initial flow field
-            get_displacement_func: Function to compute optical flow
-            imregister_func: Function to apply flow field
+            t: Volume index
+            volume: Raw volume to register
+            volume_proc: Preprocessed volume
+            reference_raw: Raw reference volume
+            reference_proc: Preprocessed reference volume
+            w_init: Initial 3D flow field
+            get_displacement_func: Function to compute 3D optical flow
+            imregister_func: Function to apply 3D flow field
             interpolation_method: Interpolation method
             flow_params: Dictionary of flow computation parameters
             
         Returns:
-            Tuple of (frame_index, registered_frame, flow_field)
+            Tuple of (volume_index, registered_volume, flow_field)
         """
-        # Compute optical flow with all parameters
+        # Compute 3D optical flow with all parameters
         flow = get_displacement_func(
             reference_proc,
-            frame_proc,
-            uv=w_init.copy(),
+            volume_proc,
+            uvw=w_init.copy(),
             **flow_params
         )
         
-        # Apply flow field to register the frame
-        reg_frame = imregister_func(
-            frame,
-            flow[..., 0],
-            flow[..., 1],
+        # Apply 3D flow field to register the volume
+        reg_volume = imregister_func(
+            volume,
+            flow[..., 0],  # u (x) displacement
+            flow[..., 1],  # v (y) displacement
+            flow[..., 2],  # w (z) displacement
             reference_raw,
             interpolation_method=interpolation_method
         )
         
-        return t, reg_frame, flow.astype(np.float32, copy=False)
+        return t, reg_volume, flow.astype(np.float32, copy=False)
     
     def process_batch(
         self,
@@ -101,40 +102,40 @@ class ThreadingExecutor(BaseExecutor):
         **kwargs
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Process frames in parallel using threads.
+        Process 3D volumes in parallel using threads.
         
         Args:
-            batch: Raw frames to register, shape (T, H, W, C)
-            batch_proc: Preprocessed frames for flow computation, shape (T, H, W, C)
-            reference_raw: Raw reference frame, shape (H, W, C)
-            reference_proc: Preprocessed reference frame, shape (H, W, C)
-            w_init: Initial flow field, shape (H, W, 2)
-            get_displacement_func: Function to compute optical flow
-            imregister_func: Function to apply flow field for registration
+            batch: Raw volumes to register, shape (T, Z, Y, X, C)
+            batch_proc: Preprocessed volumes for flow computation, shape (T, Z, Y, X, C)
+            reference_raw: Raw reference volume, shape (Z, Y, X, C)
+            reference_proc: Preprocessed reference volume, shape (Z, Y, X, C)
+            w_init: Initial 3D flow field, shape (Z, Y, X, 3)
+            get_displacement_func: Function to compute 3D optical flow
+            imregister_func: Function to apply 3D flow field for registration
             interpolation_method: Interpolation method for registration
             **kwargs: Additional parameters including 'flow_params' dict
             
         Returns:
-            Tuple of (registered_frames, flow_fields)
+            Tuple of (registered_volumes, flow_fields)
         """
-        T, H, W, C = batch.shape
+        T, Z, Y, X, C = batch.shape
         
         # Get flow parameters from kwargs
         flow_params = kwargs.get('flow_params', {})
         
         # Initialize output arrays (use empty instead of zeros for performance)
         registered = np.empty_like(batch)
-        flow_fields = np.empty((T, H, W, 2), dtype=np.float32)
+        flow_fields = np.empty((T, Z, Y, X, 3), dtype=np.float32)
         
         # Ensure executor is created
         if self.executor is None:
             self.setup()
         
-        # Submit all frames for processing
+        # Submit all volumes for processing
         futures = []
         for t in range(T):
             future = self.executor.submit(
-                self._process_frame,
+                self._process_volume,
                 t,
                 batch[t],
                 batch_proc[t],
@@ -150,18 +151,18 @@ class ThreadingExecutor(BaseExecutor):
         
         # Collect results as they complete
         for future in as_completed(futures):
-            t, reg_frame, flow = future.result()
+            t, reg_volume, flow = future.result()
             
             # Store results
             flow_fields[t] = flow
             
-            # Handle case where registered frame might have fewer channels
-            if reg_frame.ndim < registered.ndim - 1:
-                registered[t, ..., 0] = reg_frame
+            # Handle case where registered volume might have fewer channels
+            if reg_volume.ndim < registered.ndim - 1:
+                registered[t, ..., 0] = reg_volume
             else:
-                registered[t] = reg_frame
+                registered[t] = reg_volume
             
-            # Call progress callback for this frame
+            # Call progress callback for this volume
             if progress_callback is not None:
                 progress_callback(1)
         
@@ -172,10 +173,10 @@ class ThreadingExecutor(BaseExecutor):
         info = super().get_info()
         info.update({
             'parallel': True,
-            'description': f'Threaded parallel processing with {self.n_workers} workers'
+            'description': f'Threaded 3D parallel processing with {self.n_workers} workers'
         })
         return info
 
 
 # Register this executor with RuntimeContext on import
-ThreadingExecutor.register()
+ThreadingExecutor3D.register()
