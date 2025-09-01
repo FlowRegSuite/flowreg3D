@@ -451,12 +451,12 @@ class OFOptions(BaseModel):
 
             # Compensate if flowreg3d available
             try:
-                from flowreg3d import compensate_sequence
+                from flowreg3d.motion_correction.compensate_arr_3D import compensate_arr_3D
 
                 # Use stronger regularization for preregistration
                 alpha_prereg = tuple(a + 2.0 for a in self.alpha) if isinstance(self.alpha, tuple) else self.alpha + 2.0
 
-                compensated = compensate_sequence(
+                compensated = compensate_arr_3D(
                     frames_norm, ref_mean,
                     weight=weight_2d,
                     alpha=alpha_prereg,
@@ -472,7 +472,7 @@ class OFOptions(BaseModel):
                 reference = np.mean(compensated, axis=3)
             except ImportError:
                 # Fallback to simple mean
-                reference = ref_mean
+                raise ImportError("flowreg3d not available")
 
             if self.verbose:
                 print("Finished pre-registration of the reference frames.")

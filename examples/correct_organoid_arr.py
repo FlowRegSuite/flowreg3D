@@ -64,16 +64,13 @@ def main():
     print(f"Loaded data shape: {video_data.shape}")
     
     # Create reference volume from first few timepoints
-    print("\nCreating reference volume from first 3 timepoints...")
-    reference_frames = video_data[:3]  # First 3 timepoints
-    reference = np.mean(reference_frames, axis=0)  # Average over time
-    print(f"Reference shape: {reference.shape}")
+    reference = video_data[10]
     
     # Setup OF options for 3D motion correction
     options = OFOptions(
-        alpha=(0.25, 0.25, 0.25),  # Low regularization for 3D
+        alpha=(0.01, 0.01, 0.01),  # Low regularization for 3D
         quality_setting="quality",  # Balance speed and quality
-        sigma=[[0.000001, 0.5, 0.5, 0.5]],
+        sigma=[[0.000001, 1, 1, 1]],
         levels=50,
         iterations=100,
         eta=0.8,
@@ -85,12 +82,12 @@ def main():
         output_typename="float32",  # Save memory
         verbose=True,
         buffer_size=21,
+        reference_frames=[10]
     )
     
     # Option 1: Use compensate_arr_3D for all-at-once processing
     print("\nPerforming 3D motion correction...")
-    print("This may take several minutes depending on data size...")
-    
+
     def progress_callback(current, total):
         print(f"  Processing volume {current}/{total} ({100*current/total:.1f}%)")
 

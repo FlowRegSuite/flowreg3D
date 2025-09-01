@@ -90,11 +90,12 @@ class ArrayWriter3D(VideoWriter3D):
         Args:
             frames: Array with shape (T, Z, Y, X, C) or (Z, Y, X, C) for single volume
         """
+        if frames.ndim == 3:
+            return frames[np.newaxis, ..., np.newaxis]
         if frames.ndim == 4:  # Single volume
             frames = frames[np.newaxis, ...]  # Add time dimension
-        
         if frames.ndim != 5:
-            raise ValueError(f"Expected 4D or 5D array, got {frames.ndim}D")
+            raise ValueError(f"Expected 3D, 4D or 5D array, got {frames.ndim}D")
         
         # Initialize on first write
         if not self.initialized:
