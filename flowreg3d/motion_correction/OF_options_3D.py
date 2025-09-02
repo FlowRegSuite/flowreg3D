@@ -30,9 +30,14 @@ except ImportError:
 try:
     from flowreg3d.util.io._base_3d import VideoReader3D as VideoReader, VideoWriter3D as VideoWriter
     from flowreg3d.util.io.tiff_3d import TIFFFileReader3D, TIFFFileWriter3D
-    # Fallback to pyflowreg for other formats that work with 3D data
-    from pyflowreg.util.io.hdf5 import HDF5FileReader, HDF5FileWriter
-    from pyflowreg.util.io.mdf import MDFFileReader
+    from flowreg3d.util.io.hdf5_3d import HDF5FileReader3D, HDF5FileWriter3D
+    from flowreg3d.util.io.mat_3d import MATFileReader3D, MATFileWriter3D
+    from flowreg3d.util.io.multifile_wrappers_3d import MULTIFILEFileWriter3D, MULTICHANNELFileReader3D
+    # Keep MDF reader from pyflowreg if needed (2D only)
+    try:
+        from pyflowreg.util.io.mdf import MDFFileReader
+    except ImportError:
+        MDFFileReader = None
 except ImportError:
     # Use placeholder classes instead of object to avoid isinstance() always returning True
     class _VideoReaderPlaceholder: 
@@ -43,11 +48,15 @@ except ImportError:
         pass
     VideoReader = _VideoReaderPlaceholder
     VideoWriter = _VideoWriterPlaceholder
-    HDF5FileReader = None
-    HDF5FileWriter = None
+    HDF5FileReader3D = None
+    HDF5FileWriter3D = None
+    MATFileReader3D = None
+    MATFileWriter3D = None
     MDFFileReader = None
     TIFFFileReader3D = None
     TIFFFileWriter3D = None
+    MULTIFILEFileWriter3D = None
+    MULTICHANNELFileReader3D = None
 
 
 # Enums
