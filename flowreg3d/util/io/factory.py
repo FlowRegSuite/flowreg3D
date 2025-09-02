@@ -42,15 +42,13 @@ def get_video_file_reader(input_source: Union[str, Path, np.ndarray, VideoReader
     # Import readers here to avoid circular imports
     from flowreg3d.util.io.tiff_3d import TIFFFileReader3D
     
-    # TODO: Add these when implemented:
-    # from flowreg3d.util.io.hdf5_3d import HDF5FileReader3D
-    # from flowreg3d.util.io.mat_3d import MATFileReader3D
-    # from flowreg3d.util.io.multifile_wrappers_3d import MULTICHANNELFileReader3D
+    from flowreg3d.util.io.hdf5_3d import HDF5FileReader3D
+    from flowreg3d.util.io.mat_3d import MATFileReader3D
+    from flowreg3d.util.io.multifile_wrappers_3d import MULTICHANNELFileReader3D
 
     # Handle multichannel input (list of files)
     if isinstance(input_source, list):
-        # TODO: Implement MULTICHANNELFileReader3D
-        raise NotImplementedError("Multichannel 3D reading not yet implemented")
+        return MULTICHANNELFileReader3D(input_source, buffer_size, bin_size, **kwargs)
     
     # From here on, treat as file path
     file_path = input_source
@@ -70,18 +68,17 @@ def get_video_file_reader(input_source: Union[str, Path, np.ndarray, VideoReader
     readers = {
         '.tif': TIFFFileReader3D,
         '.tiff': TIFFFileReader3D,
-        # TODO: Add more formats as they're implemented
-        # '.h5': HDF5FileReader3D,
-        # '.hdf5': HDF5FileReader3D,
-        # '.hdf': HDF5FileReader3D,
-        # '.mat': MATFileReader3D,
+        '.h5': HDF5FileReader3D,
+        '.hdf5': HDF5FileReader3D,
+        '.hdf': HDF5FileReader3D,
+        '.mat': MATFileReader3D,
     }
 
     reader_class = readers.get(ext)
     if reader_class:
         return reader_class(str(file_path), buffer_size, bin_size, **kwargs)
     else:
-        raise ValueError(f"Unsupported file format for 3D: {ext}. Currently only TIFF is supported.")
+        raise ValueError(f"Unsupported file format for 3D: {ext}. Supported: TIFF, HDF5, MAT")
 
 
 def get_video_file_writer(file_path: Optional[str], output_format: str, **kwargs) -> VideoWriter3D:
@@ -101,10 +98,9 @@ def get_video_file_writer(file_path: Optional[str], output_format: str, **kwargs
     # Import writers here to avoid circular imports
     from flowreg3d.util.io.tiff_3d import TIFFFileWriter3D
     
-    # TODO: Add these when implemented:
-    # from flowreg3d.util.io.hdf5_3d import HDF5FileWriter3D
-    # from flowreg3d.util.io.mat_3d import MATFileWriter3D
-    # from flowreg3d.util.io.multifile_wrappers_3d import MULTIFILEFileWriter3D
+    from flowreg3d.util.io.hdf5_3d import HDF5FileWriter3D
+    from flowreg3d.util.io.mat_3d import MATFileWriter3D
+    from flowreg3d.util.io.multifile_wrappers_3d import MULTIFILEFileWriter3D
 
     # Special handling for memory formats
     if output_format == 'ARRAY':
@@ -119,14 +115,14 @@ def get_video_file_writer(file_path: Optional[str], output_format: str, **kwargs
     if output_format == 'TIFF':
         return TIFFFileWriter3D(file_path, **kwargs)
     elif output_format == 'HDF5':
-        # TODO: Implement HDF5FileWriter3D
-        raise NotImplementedError("HDF5 3D writing not yet implemented")
+        return HDF5FileWriter3D(file_path, **kwargs)
     elif output_format == 'MAT':
-        # TODO: Implement MATFileWriter3D
-        raise NotImplementedError("MAT 3D writing not yet implemented")
+        return MATFileWriter3D(file_path, **kwargs)
     elif output_format.startswith('MULTIFILE'):
-        # TODO: Implement multifile writers for 3D
-        raise NotImplementedError("Multifile 3D writing not yet implemented")
+        # Extract the base format (e.g., 'TIFF' from 'MULTIFILE_TIFF')
+        parts = output_format.split('_')
+        file_type = parts[1] if len(parts) > 1 else 'TIFF'
+        return MULTIFILEFileWriter3D(file_path, file_type, **kwargs)
     else:
         raise ValueError(f"Unsupported 3D output format: {output_format}")
 
