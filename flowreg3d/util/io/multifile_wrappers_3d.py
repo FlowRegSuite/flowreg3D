@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from pyflowreg.util.io._base import VideoReader, VideoWriter
-from pyflowreg.util.io.factory import get_video_file_reader, get_video_file_writer
+from flowreg3d.util.io.factory import get_video_file_reader, get_video_file_writer
 
 
 class MULTIFILEFileWriter(VideoWriter):
@@ -390,10 +390,10 @@ def main():
     # Test that factory functions are properly imported
     print("\nTesting factory function imports...")
     try:
-        from flowreg3d.util.io.factory_3d import get_video_file_reader_3d as factory_reader
-        from flowreg3d.util.io.factory_3d import get_video_file_writer_3d as factory_writer
-        assert factory_reader == get_video_file_reader_3d
-        assert factory_writer == get_video_file_writer_3d
+        from flowreg3d.util.io.factory import get_video_file_reader as factory_reader
+        from flowreg3d.util.io.factory import get_video_file_writer as factory_writer
+        assert factory_reader == get_video_file_reader
+        assert factory_writer == get_video_file_writer
         print("✓ Factory functions properly imported")
     except ImportError as e:
         print(f"✗ Factory import failed: {e}")
