@@ -445,6 +445,8 @@ def visualize_in_napari(original, displaced, corrected, flow_est=None, flow_gt=N
         if flow_error is not None:
             flow_error_magnitude = np.sqrt(
                 flow_error[:, :, :, 0] ** 2 + flow_error[:, :, :, 1] ** 2 + flow_error[:, :, :, 2] ** 2)
+            # Add channel dimension to prevent transposition issue in napari
+            flow_error_magnitude = flow_error_magnitude[..., np.newaxis]
             viewer.add_image(flow_error_magnitude, name="Flow Error Magnitude", colormap='hot', visible=False,
                 contrast_limits=[0, flow_error_magnitude.max()])
 
@@ -490,9 +492,7 @@ def main():
     print(f"\nLoading pre-aligned video: {aligned_file}")
 
     # Use binning=9 to get a proper 3D stack as mentioned in the instructions
-    reader = get_video_file_reader(str(aligned_file), buffer_size=100, bin_size=9
-        # Important: binning=9 returns perfect 3D stack
-    )
+    reader = get_video_file_reader(str(aligned_file), buffer_size=100, bin_size=9)
 
     print(f"  Reader shape: {reader.shape}")
     print(f"  Frames: {reader.frame_count}")

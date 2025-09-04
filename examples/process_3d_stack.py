@@ -259,7 +259,7 @@ def main():
     # Get the script's directory and navigate to data folder
     script_dir = Path(__file__).parent
     repo_root = script_dir.parent  # Go up from examples/ to repo root
-    aligned_file = repo_root / "data" / "aligned_sequence" / "compensated.HDF5"
+    _alignedfile = repo_root / "data" / "aligned_sequence" / "compensated.HDF5"
     
     if not aligned_file.exists():
         print(f"\n✗ Error: Aligned file not found: {aligned_file}")
