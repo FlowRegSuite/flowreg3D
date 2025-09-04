@@ -7,20 +7,20 @@ import scipy.io as sio
 import h5py
 import hdf5storage as h5s
 
-from pyflowreg.util.io._base import VideoReader, VideoWriter
-from pyflowreg.util.io._ds_io import DSFileReader, DSFileWriter
+from flowreg3d.util.io._base_3d import VideoReader3D, VideoWriter3D
+from flowreg3d.util.io._ds_io_3d import DSFileReader3D, DSFileWriter3D
 
 
-class MATFileReader(DSFileReader, VideoReader):
+class MATFileReader3D(DSFileReader3D, VideoReader3D):
     """
-    MAT video file reader with dataset discovery.
+    MAT 3D volumetric file reader with dataset discovery.
     Supports both traditional MAT files (v5, v7) and v7.3 (HDF5-based).
     """
 
-    def __init__(self, file_path: str, buffer_size: int = 500, bin_size: int = 1, **kwargs):
+    def __init__(self, file_path: str, buffer_size: int = 10, bin_size: int = 1, **kwargs):
         # Initialize parent classes
-        DSFileReader.__init__(self)
-        VideoReader.__init__(self)
+        DSFileReader3D.__init__(self)
+        VideoReader3D.__init__(self)
 
         self.file_path = file_path
         self.buffer_size = buffer_size

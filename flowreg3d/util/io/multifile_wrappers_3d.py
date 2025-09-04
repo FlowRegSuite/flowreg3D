@@ -9,11 +9,11 @@ from pathlib import Path
 
 import numpy as np
 
-from pyflowreg.util.io._base import VideoReader, VideoWriter
+from flowreg3d.util.io._base_3d import VideoReader3D, VideoWriter3D
 from flowreg3d.util.io.factory import get_video_file_reader, get_video_file_writer
 
 
-class MULTIFILEFileWriter(VideoWriter):
+class MULTIFILEFileWriter3D(VideoWriter3D):
     """
     File writer that writes one file per channel.
     Each channel is saved to a separate file with _ch{N} suffix.
@@ -99,7 +99,7 @@ class MULTIFILEFileWriter(VideoWriter):
         self.file_writers = []
 
 
-class MULTICHANNELFileReader(VideoReader):
+class MULTICHANNELFileReader3D(VideoReader3D):
     """
     Generic multichannel reader that reads from multiple video files
     and combines them into a single multichannel output.
