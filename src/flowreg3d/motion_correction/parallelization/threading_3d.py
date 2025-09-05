@@ -68,25 +68,93 @@ class ThreadingExecutor3D(BaseExecutor3D):
         Returns:
             Tuple of (volume_index, registered_volume, flow_field)
         """
-        # Compute 3D optical flow with all parameters
-        flow = get_displacement_func(
-            reference_proc,
-            volume_proc,
-            uvw=w_init.copy(),
-            **flow_params
-        )
+        # Import prealignment functions if needed
+        from flowreg3d.util.xcorr_prealignment import estimate_rigid_xcorr_3d
+        
+        # Extract CC parameters and remove them from flow_params
+        use_cc = bool(flow_params.get('cc_initialization', False))
+        cc_hw = flow_params.get('cc_hw', 256)
+        cc_up = int(flow_params.get('cc_up', 10))
+        
+        # Create flow_params without CC parameters
+        flow_params_clean = {k: v for k, v in flow_params.items() 
+                            if k not in ['cc_initialization', 'cc_hw', 'cc_up']}
+        
+        if use_cc:
+            target_hw = cc_hw
+            if isinstance(target_hw, int):
+                target_hw = (target_hw, target_hw)
+            up = cc_up
+            weight = flow_params_clean.get('weight', None)
+            
+            # Step 1: Backward warp mov by w_init to get partially aligned
+            mov_partial = imregister_func(
+                volume_proc,
+                w_init[..., 0],  # dx
+                w_init[..., 1],  # dy
+                w_init[..., 2],  # dz
+                reference_proc,
+                interpolation_method='linear'
+            )
+            
+            # Ensure shape consistency for xcorr (handle single channel case)
+            ref_for_cc = reference_proc
+            mov_for_cc = mov_partial
+            if reference_proc.ndim == 4 and reference_proc.shape[3] == 1:
+                ref_for_cc = reference_proc[..., 0]
+            if mov_partial.ndim == 3 and reference_proc.ndim == 4:
+                mov_for_cc = mov_partial
+            elif mov_partial.ndim == 4 and mov_partial.shape[3] == 1:
+                mov_for_cc = mov_partial[..., 0]
+            
+            # Step 2: Estimate rigid residual between ref and partially aligned mov
+            w_cross = estimate_rigid_xcorr_3d(ref_for_cc, mov_for_cc, target_hw=target_hw, up=up, weight=weight)
+            
+            # Step 3: Combine w_init + w_cross
+            w_combined = w_init.copy()
+            w_combined[..., 0] += w_cross[0]
+            w_combined[..., 1] += w_cross[1]
+            w_combined[..., 2] += w_cross[2]
+            
+            # Step 4: Backward warp original mov by combined field
+            mov_aligned = imregister_func(
+                volume_proc,
+                w_combined[..., 0],
+                w_combined[..., 1],
+                w_combined[..., 2],
+                reference_proc,
+                interpolation_method='linear'
+            )
+            
+            # Ensure mov_aligned has channel dimension (imregister_wrapper strips it for single channel)
+            if mov_aligned.ndim == 3:
+                mov_aligned = mov_aligned[..., np.newaxis]
+            
+            # Step 5: Get residual non-rigid displacement
+            w_residual = get_displacement_func(reference_proc, mov_aligned, uvw=np.zeros_like(w_init), **flow_params_clean)
+            
+            # Step 6: Total flow is w_init + w_cross + w_residual
+            flow = (w_combined + w_residual).astype(np.float32, copy=False)
+        else:
+            # Compute 3D optical flow without prealignment
+            flow = get_displacement_func(
+                reference_proc,
+                volume_proc,
+                uvw=w_init.copy(),
+                **flow_params_clean
+            ).astype(np.float32, copy=False)
         
         # Apply 3D flow field to register the volume
         reg_volume = imregister_func(
             volume,
-            flow[..., 0],  # u (x) displacement
-            flow[..., 1],  # v (y) displacement
-            flow[..., 2],  # w (z) displacement
+            flow[..., 0],  # u (dx) displacement
+            flow[..., 1],  # v (dy) displacement
+            flow[..., 2],  # w (dz) displacement
             reference_raw,
             interpolation_method=interpolation_method
         )
         
-        return t, reg_volume, flow.astype(np.float32, copy=False)
+        return t, reg_volume, flow
     
     def process_batch(
         self,

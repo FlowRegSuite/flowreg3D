@@ -84,7 +84,7 @@ def warp_volume_bw3d_torch(volume, flow):
 
     Args:
         volume: Input volume (Z, Y, X) or (Z, Y, X, C)
-        flow: Flow field (Z, Y, X, 3) where last dim is (dz, dy, dx)
+        flow: Flow field (Z, Y, X, 3) where last dim is (dx, dy, dz)
 
     Returns:
         Warped volume with same shape as input
@@ -130,7 +130,7 @@ def warp_volume_splat3d(volume, flow):
 
     Args:
         volume: Input volume (Z, Y, X) or (Z, Y, X, C)
-        flow: Flow field (Z, Y, X, 3) where last dim is (dz, dy, dx)
+        flow: Flow field (Z, Y, X, 3) where last dim is (dx, dy, dz)
 
     Returns:
         Warped volume with same shape as input
@@ -138,10 +138,10 @@ def warp_volume_splat3d(volume, flow):
     Z, H, W = volume.shape[:3]
     z, y, x = np.meshgrid(np.arange(Z), np.arange(H), np.arange(W), indexing='ij')
 
-    # Target coordinates
-    tz = (z + flow[..., 0]).ravel()
-    ty = (y + flow[..., 1]).ravel()
-    tx = (x + flow[..., 2]).ravel()
+    # Target coordinates (flow is [dx, dy, dz])
+    tx = (x + flow[..., 0]).ravel()  # dx
+    ty = (y + flow[..., 1]).ravel()  # dy
+    tz = (z + flow[..., 2]).ravel()  # dz
 
     # Bilinear interpolation weights
     iz = np.floor(tz).astype(np.int64)
@@ -200,7 +200,7 @@ def warp_volume_pc3d(volume, flow):
 
     Args:
         volume: Input volume (Z, Y, X) or (Z, Y, X, C)
-        flow: Flow field (Z, Y, X, 3) where last dim is (dz, dy, dx)
+        flow: Flow field (Z, Y, X, 3) where last dim is (dx, dy, dz)
 
     Returns:
         Warped volume with same shape as input
@@ -214,9 +214,9 @@ def warp_volume_pc3d(volume, flow):
                                          np.arange(W, dtype=np.float32), indexing='ij')
 
     # Compute target coordinates (where each pixel moves TO)
-    target_x = grid_x + flow[:, :, :, 2]  # dx component
+    target_x = grid_x + flow[:, :, :, 0]  # dx component
     target_y = grid_y + flow[:, :, :, 1]  # dy component
-    target_z = grid_z + flow[:, :, :, 0]  # dz component
+    target_z = grid_z + flow[:, :, :, 2]  # dz component
 
     # Forward warp: scatter source pixels to target locations
     if volume.ndim == 4:  # Has channels
@@ -253,7 +253,7 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
         flow_params: Dictionary of flow parameters
 
     Returns:
-        Flow field (Z, Y, X, 3) where last dim is (dz, dy, dx)
+        Flow field with shape (Z, Y, X, 3) where last dimension contains [dx, dy, dz]
     """
     print("\nComputing 3D optical flow...")
     print(f"  Input shapes: {frame1.shape}, {frame2.shape}")
@@ -286,7 +286,7 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
 
     t0 = time.perf_counter()
 
-    # Call get_displacement which returns (Z, Y, X, 3) with (dz, dy, dx)
+    # Call get_displacement which returns (Z, Y, X, 3) with (dx, dy, dz)
     flow = get_displacement(f1_norm, f2_norm, **flow_params)
 
     t_elapsed = time.perf_counter() - t0
@@ -296,11 +296,11 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
     print(f"  Flow field shape: {flow.shape}")
     print(f"  Flow magnitude stats:")
     print(
-        f"    Z: min={flow[:, :, :, 0].min():.2f}, max={flow[:, :, :, 0].max():.2f}, mean={flow[:, :, :, 0].mean():.2f}")
+        f"    dx: min={flow[:, :, :, 0].min():.2f}, max={flow[:, :, :, 0].max():.2f}, mean={flow[:, :, :, 0].mean():.2f}")
     print(
-        f"    Y: min={flow[:, :, :, 1].min():.2f}, max={flow[:, :, :, 1].max():.2f}, mean={flow[:, :, :, 1].mean():.2f}")
+        f"    dy: min={flow[:, :, :, 1].min():.2f}, max={flow[:, :, :, 1].max():.2f}, mean={flow[:, :, :, 1].mean():.2f}")
     print(
-        f"    X: min={flow[:, :, :, 2].min():.2f}, max={flow[:, :, :, 2].max():.2f}, mean={flow[:, :, :, 2].mean():.2f}")
+        f"    dz: min={flow[:, :, :, 2].min():.2f}, max={flow[:, :, :, 2].max():.2f}, mean={flow[:, :, :, 2].mean():.2f}")
 
     total_magnitude = np.sqrt(np.sum(flow ** 2, axis=-1))
     print(
@@ -345,11 +345,11 @@ def create_displaced_frame_with_generator(video, generator_type='high_disp'):
     print(f"  Ground truth flow shape: {flow_gt.shape}")
     print(f"  Flow magnitude stats:")
     print(
-        f"    Z: min={flow_gt[:, :, :, 0].min():.2f}, max={flow_gt[:, :, :, 0].max():.2f}, mean={flow_gt[:, :, :, 0].mean():.2f}")
+        f"    dx: min={flow_gt[:, :, :, 0].min():.2f}, max={flow_gt[:, :, :, 0].max():.2f}, mean={flow_gt[:, :, :, 0].mean():.2f}")
     print(
-        f"    Y: min={flow_gt[:, :, :, 1].min():.2f}, max={flow_gt[:, :, :, 1].max():.2f}, mean={flow_gt[:, :, :, 1].mean():.2f}")
+        f"    dy: min={flow_gt[:, :, :, 1].min():.2f}, max={flow_gt[:, :, :, 1].max():.2f}, mean={flow_gt[:, :, :, 1].mean():.2f}")
     print(
-        f"    X: min={flow_gt[:, :, :, 2].min():.2f}, max={flow_gt[:, :, :, 2].max():.2f}, mean={flow_gt[:, :, :, 2].mean():.2f}")
+        f"    dz: min={flow_gt[:, :, :, 2].min():.2f}, max={flow_gt[:, :, :, 2].max():.2f}, mean={flow_gt[:, :, :, 2].mean():.2f}")
 
     # Create displaced frame using backward warping with negated flow
     # This simulates forward motion: backward_warp(video, -flow) ≈ forward_warp(video, flow)
@@ -547,11 +547,11 @@ def main():
     # Apply motion correction using imregister_wrapper (backwards warping)
     print("\nApplying motion correction...")
     # imregister_wrapper warps displaced to align with original_cropped
-    # flow_est contains (dz, dy, dx) components that map from displaced to original
+    # flow_est contains (dx, dy, dz) components that map from displaced to original
     corrected = imregister_wrapper(displaced,  # frame to warp
-        flow_est[:, :, :, 2],  # u (x displacement)
-        flow_est[:, :, :, 1],  # v (y displacement)
-        flow_est[:, :, :, 0],  # w (z displacement)
+        flow_est[:, :, :, 0],  # u (dx displacement)
+        flow_est[:, :, :, 1],  # v (dy displacement)
+        flow_est[:, :, :, 2],  # w (dz displacement)
         original_cropped,  # reference for boundary conditions
         interpolation_method='cubic')
 

@@ -14,7 +14,7 @@ def warp_volume_3d(volume, flow):
     
     Args:
         volume: Input volume of shape (Z, Y, X) or (Z, Y, X, C)
-        flow: Displacement field of shape (Z, Y, X, 3) where last dim is (dz, dy, dx)
+        flow: Displacement field of shape (Z, Y, X, 3) where last dim is (dx, dy, dz)
     
     Returns:
         Warped volume with same shape as input
@@ -30,10 +30,10 @@ def warp_volume_3d(volume, flow):
         indexing='ij'
     )
     
-    # Apply displacement
-    zi_warped = zi + flow[:, :, :, 0]
-    yi_warped = yi + flow[:, :, :, 1]
-    xi_warped = xi + flow[:, :, :, 2]
+    # Apply displacement (flow is [dx, dy, dz])
+    xi_warped = xi + flow[:, :, :, 0]  # dx
+    yi_warped = yi + flow[:, :, :, 1]  # dy
+    zi_warped = zi + flow[:, :, :, 2]  # dz
     
     # Prepare output
     warped = np.zeros_like(volume)
@@ -132,10 +132,10 @@ class Rotational3DFlowAugmentor:
                 Z_new = sin_a * Y_rot + cos_a * Z_rot
                 Y_rot, Z_rot = Y_new, Z_new
         
-        # Add displacement to flow
-        flow[:, :, :, 0] += Z_rot - Z
-        flow[:, :, :, 1] += Y_rot - Y
-        flow[:, :, :, 2] += X_rot - X
+        # Add displacement to flow (output as [dx, dy, dz])
+        flow[:, :, :, 0] += X_rot - X  # dx
+        flow[:, :, :, 1] += Y_rot - Y  # dy
+        flow[:, :, :, 2] += Z_rot - Z  # dz
         
         return flow
 
@@ -161,9 +161,9 @@ class Translational3DFlowAugmentor:
         d_y = np.random.uniform(-self.max_disp, self.max_disp)
         d_x = np.random.uniform(-self.max_disp, self.max_disp)
         
-        flow[:, :, :, 0] += d_z
-        flow[:, :, :, 1] += d_y
-        flow[:, :, :, 2] += d_x
+        flow[:, :, :, 0] += d_x  # dx
+        flow[:, :, :, 1] += d_y  # dy
+        flow[:, :, :, 2] += d_z  # dz
         
         return flow
 
@@ -213,7 +213,7 @@ class Jitter3DFlowAugmentor:
                     # Jitter along Z axis
                     z_wave = np.linspace(phase, periods * 2*np.pi + phase, depth)
                     jitter = magnitude * np.sin(z_wave)
-                    flow[:, :, :, 0] += jitter[:, np.newaxis, np.newaxis]
+                    flow[:, :, :, 2] += jitter[:, np.newaxis, np.newaxis]  # dz (z-jitter)
         
         return flow
 
@@ -271,10 +271,10 @@ class Expansion3DFlowAugmentor:
             indexing='ij'
         )
         
-        # Add expansion displacement
-        flow[:, :, :, 0] += Z * magnitude_z
-        flow[:, :, :, 1] += Y * magnitude_y
-        flow[:, :, :, 2] += X * magnitude_x
+        # Add expansion displacement (output as [dx, dy, dz])
+        flow[:, :, :, 0] += X * magnitude_x  # dx
+        flow[:, :, :, 1] += Y * magnitude_y  # dy
+        flow[:, :, :, 2] += Z * magnitude_z  # dz
         
         return flow
 
@@ -359,13 +359,13 @@ class Shear3DFlowAugmentor:
                 
                 if plane == 'xy':
                     # Shear in XY plane
-                    flow[:, :, :, 2] += shear * Y  # X displacement based on Y
+                    flow[:, :, :, 0] += shear * Y  # dx displacement based on Y
                 elif plane == 'xz':
                     # Shear in XZ plane
-                    flow[:, :, :, 2] += shear * Z  # X displacement based on Z
+                    flow[:, :, :, 0] += shear * Z  # dx displacement based on Z
                 elif plane == 'yz':
                     # Shear in YZ plane
-                    flow[:, :, :, 1] += shear * Z  # Y displacement based on Z
+                    flow[:, :, :, 1] += shear * Z  # dy displacement based on Z
         
         return flow
 
@@ -409,9 +409,10 @@ class FlowGenerator3D:
             indexing='ij'
         )
         
-        Z_mapped = Z + flow[:, :, :, 0]
-        Y_mapped = Y + flow[:, :, :, 1]
-        X_mapped = X + flow[:, :, :, 2]
+        # Map coordinates using [dx, dy, dz] convention
+        X_mapped = X + flow[:, :, :, 0]  # dx
+        Y_mapped = Y + flow[:, :, :, 1]  # dy
+        Z_mapped = Z + flow[:, :, :, 2]  # dz
         
         # Mark invalid regions (out of bounds)
         invalid_map = (

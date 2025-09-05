@@ -244,9 +244,9 @@ def get_displacement(fixed, moving, alpha=(2, 2, 2), update_lag=10, iterations=2
             w = add_boundary(resize(w[1:-1, 1:-1, 1:-1], level_size))
             # Apply warping without division (displacements are in level units)
             tmp = imregister_wrapper(f2_level, 
-                                   u[1:-1, 1:-1, 1:-1] / current_hy,
-                                   v[1:-1, 1:-1, 1:-1] / current_hx,
-                                   w[1:-1, 1:-1, 1:-1] / current_hz,
+                                   u[1:-1, 1:-1, 1:-1] / current_hx,  # dx/hx
+                                   v[1:-1, 1:-1, 1:-1] / current_hy,  # dy/hy
+                                   w[1:-1, 1:-1, 1:-1] / current_hz,  # dz/hz
                                    f1_level)
         if tmp.ndim == 3:
             tmp = tmp[:, :, :, np.newaxis]
@@ -306,9 +306,9 @@ def get_displacement(fixed, moving, alpha=(2, 2, 2), update_lag=10, iterations=2
         v = v + dv
         w = w + dw
     flow = np.zeros((u.shape[0] - 2, u.shape[1] - 2, u.shape[2] - 2, 3), dtype=np.float64)
-    flow[:, :, :, 0] = w[1:-1, 1:-1, 1:-1]  # dz component
+    flow[:, :, :, 0] = u[1:-1, 1:-1, 1:-1]  # dx component
     flow[:, :, :, 1] = v[1:-1, 1:-1, 1:-1]  # dy component
-    flow[:, :, :, 2] = u[1:-1, 1:-1, 1:-1]  # dx component
+    flow[:, :, :, 2] = w[1:-1, 1:-1, 1:-1]  # dz component
     if min_level > 0:
         # Resize to original dimensions using the custom resize function
         flow_resized = np.zeros((p, m, n, 3), dtype=np.float64)

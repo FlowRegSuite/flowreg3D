@@ -56,6 +56,7 @@ def _process_volume_worker(
     """
     # Import functions inside worker to avoid pickling issues with Numba
     from flowreg3d.core.optical_flow_3d import get_displacement, imregister_wrapper
+    from flowreg3d.util.xcorr_prealignment import estimate_rigid_xcorr_3d
     
     # Get arrays from shared memory
     batch = _SHM['batch'][1]
@@ -66,31 +67,87 @@ def _process_volume_worker(
     ref_raw = _SHM['ref_raw'][1]
     w_init = _SHM['w_init'][1]
     
-    # Reconstruct flow parameters with weight array if present
-    flow_params = dict(flow_param_scalars)
+    # Extract CC parameters and remove them from flow_params
+    use_cc = bool(flow_param_scalars.get('cc_initialization', False))
+    cc_hw = flow_param_scalars.get('cc_hw', 256)
+    cc_up = int(flow_param_scalars.get('cc_up', 10))
+    
+    # Create flow_params without CC parameters
+    flow_params = {k: v for k, v in flow_param_scalars.items() 
+                   if k not in ['cc_initialization', 'cc_hw', 'cc_up']}
     if 'weight' in _SHM:
         flow_params['weight'] = _SHM['weight'][1]
     
-    # Compute 3D optical flow with all parameters
-    flow = get_displacement(
-        ref_proc,
-        batch_proc[t],
-        uvw=w_init.copy(),
-        **flow_params
-    )
+    # Check if cross-correlation initialization is enabled
+    if use_cc:
+        target_hw = cc_hw
+        if isinstance(target_hw, int):
+            target_hw = (target_hw, target_hw)
+        weight = _SHM['weight'][1] if 'weight' in _SHM else None
+        
+        # Step 1: Backward warp mov by w_init to get partially aligned
+        mov_partial = imregister_wrapper(
+            batch_proc[t],
+            w_init[..., 0],  # dx
+            w_init[..., 1],  # dy
+            w_init[..., 2],  # dz
+            ref_proc,
+            interpolation_method='linear'
+        )
+        
+        # Ensure shape consistency for xcorr (handle single channel case)
+        ref_for_cc = ref_proc
+        mov_for_cc = mov_partial
+        if ref_proc.ndim == 4 and ref_proc.shape[3] == 1:
+            ref_for_cc = ref_proc[..., 0]
+        if mov_partial.ndim == 3 and ref_proc.ndim == 4:
+            mov_for_cc = mov_partial
+        elif mov_partial.ndim == 4 and mov_partial.shape[3] == 1:
+            mov_for_cc = mov_partial[..., 0]
+        
+        # Step 2: Estimate rigid residual between ref and partially aligned mov
+        w_cross = estimate_rigid_xcorr_3d(ref_for_cc, mov_for_cc, target_hw=target_hw, up=cc_up, weight=weight)
+        
+        # Step 3: Combine w_init + w_cross
+        w_combined = w_init.copy()
+        w_combined[..., 0] += w_cross[0]
+        w_combined[..., 1] += w_cross[1]
+        w_combined[..., 2] += w_cross[2]
+        
+        # Step 4: Backward warp original mov by combined field
+        mov_aligned = imregister_wrapper(
+            batch_proc[t],
+            w_combined[..., 0],
+            w_combined[..., 1],
+            w_combined[..., 2],
+            ref_proc,
+            interpolation_method='linear'
+        )
+        
+        # Ensure mov_aligned has channel dimension (imregister_wrapper strips it for single channel)
+        if mov_aligned.ndim == 3:
+            mov_aligned = mov_aligned[..., np.newaxis]
+        
+        # Step 5: Get residual non-rigid displacement
+        w_residual = get_displacement(ref_proc, mov_aligned, uvw=np.zeros_like(w_init), **flow_params)
+        
+        # Step 6: Total flow is w_init + w_cross + w_residual
+        flow = (w_combined + w_residual).astype(np.float32, copy=False)
+    else:
+        flow = get_displacement(ref_proc, batch_proc[t], uvw=w_init.copy(), **flow_params).astype(np.float32, copy=False)
     
     # Apply 3D flow field to register the volume
     reg_volume = imregister_wrapper(
         batch[t],
-        flow[..., 0],  # u (x) displacement
-        flow[..., 1],  # v (y) displacement
-        flow[..., 2],  # w (z) displacement
+        flow[..., 0],  # u (dx) displacement
+        flow[..., 1],  # v (dy) displacement
+        flow[..., 2],  # w (dz) displacement
         ref_raw,
         interpolation_method=interpolation_method
     )
     
     # Store results directly in shared memory
-    w_out[t] = flow.astype(np.float32, copy=False)
+    w_out[t] = flow
     
     # Handle case where registered volume might have fewer channels
     if reg_volume.ndim < registered.ndim - 1:

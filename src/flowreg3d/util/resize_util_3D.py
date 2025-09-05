@@ -146,3 +146,8 @@ def imresize_fused_gauss_cubic3D(img, size, sigma_coeff=0.6, per_axis=False):
     else:
         raise ValueError("img must be 3D or 4D with channels-last")
     return y.astype(img.dtype, copy=False)
+
+
+def imresize2d_gauss_cubic(img2d, out_hw, sigma_coeff=0.6):
+    y = imresize_fused_gauss_cubic3D(img2d[None, ...], (1, int(out_hw[0]), int(out_hw[1])), sigma_coeff=sigma_coeff, per_axis=True)
+    return y[0]

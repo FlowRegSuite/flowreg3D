@@ -45,7 +45,7 @@ def warp_volume_splat3d(volume, flow):
     
     Args:
         volume: Input volume (Z, Y, X) or (Z, Y, X, C)
-        flow: Flow field (Z, Y, X, 3) where last dim is (dz, dy, dx)
+        flow: Flow field (Z, Y, X, 3) where last dim is (dx, dy, dz)
     
     Returns:
         Warped volume with same shape as input
@@ -53,10 +53,10 @@ def warp_volume_splat3d(volume, flow):
     Z, H, W = volume.shape[:3]
     z, y, x = np.meshgrid(np.arange(Z), np.arange(H), np.arange(W), indexing='ij')
     
-    # Target coordinates
-    tz = (z + flow[..., 0]).ravel()
-    ty = (y + flow[..., 1]).ravel()
-    tx = (x + flow[..., 2]).ravel()
+    # Target coordinates (flow is [dx, dy, dz])
+    tx = (x + flow[..., 0]).ravel()  # dx
+    ty = (y + flow[..., 1]).ravel()  # dy
+    tz = (z + flow[..., 2]).ravel()  # dz
     
     # Bilinear interpolation weights
     iz = np.floor(tz).astype(np.int64)
@@ -119,7 +119,7 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
         flow_params: Dictionary of flow parameters
     
     Returns:
-        Flow field (Z, Y, X, 3) where last dim is (dz, dy, dx)
+        Flow field (Z, Y, X, 3) where last dim is (dx, dy, dz)
     """
     print("\nComputing 3D optical flow at full resolution...")
     print(f"  Input shapes: {frame1.shape}, {frame2.shape}")
@@ -152,7 +152,7 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
     
     t0 = time.perf_counter()
     
-    # Call get_displacement which returns (Z, Y, X, 3) with (dz, dy, dx)
+    # Call get_displacement which returns (Z, Y, X, 3) with (dx, dy, dz)
     flow = get_displacement(f1_norm, f2_norm, **flow_params)
     
     t_elapsed = time.perf_counter() - t0
@@ -173,7 +173,7 @@ def create_sparse_vector_field(flow, spacing=50):
     Create sparse vector field for visualization.
     
     Args:
-        flow: Flow field (Z, Y, X, 3) where last dim is (dz, dy, dx)
+        flow: Flow field (Z, Y, X, 3) where last dim is (dx, dy, dz)
         spacing: Distance between sampled vectors
     
     Returns:
@@ -430,9 +430,9 @@ def main():
     print("\nApplying motion correction...")
     corrected = imregister_wrapper(
         displaced,
-        flow_est[:, :, :, 2],  # u (x displacement)
-        flow_est[:, :, :, 1],  # v (y displacement)
-        flow_est[:, :, :, 0],  # w (z displacement)
+        flow_est[:, :, :, 0],  # u (dx displacement)
+        flow_est[:, :, :, 1],  # v (dy displacement)
+        flow_est[:, :, :, 2],  # w (dz displacement)
         original_cropped,
         interpolation_method='cubic'
     )

@@ -239,6 +239,9 @@ class BatchMotionCorrector:
             'iterations': self.options.iterations,
             'a_smooth': self.options.a_smooth,
             'a_data': self.options.a_data,
+            'cc_initialization': bool(getattr(self.options, 'cc_initialization', False)),
+            'cc_hw': getattr(self.options, 'cc_hw', 256),
+            'cc_up': int(getattr(self.options, 'cc_up', 10)),
         }
 
         if w_init is not None:
@@ -270,6 +273,9 @@ class BatchMotionCorrector:
             'iterations': self.options.iterations,
             'a_smooth': self.options.a_smooth,
             'a_data': self.options.a_data,
+            'cc_initialization': bool(getattr(self.options, 'cc_initialization', False)),
+            'cc_hw': getattr(self.options, 'cc_hw', 256),
+            'cc_up': int(getattr(self.options, 'cc_up', 10)),
         }
         
         # Get interpolation method

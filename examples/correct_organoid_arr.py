@@ -70,7 +70,7 @@ def main():
     options = OFOptions(
         alpha=(0.01, 0.01, 0.01),  # Low regularization for 3D
         quality_setting="quality",  # Balance speed and quality
-        sigma=[[0.000001, 1, 1, 1]],
+        sigma=[[0.000001, 0.01, 0.01, 0.01]],
         levels=50,
         iterations=100,
         eta=0.8,
@@ -82,6 +82,7 @@ def main():
         output_typename="float32",  # Save memory
         verbose=True,
         buffer_size=21,
+        cc_initialization=True,
         reference_frames=[10]
     )
     
