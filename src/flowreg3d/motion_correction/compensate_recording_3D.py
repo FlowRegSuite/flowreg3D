@@ -304,33 +304,46 @@ class BatchMotionCorrector:
 
     def _compute_initial_w(self, first_batch: np.ndarray, first_batch_proc: np.ndarray) -> np.ndarray:
         """Compute initial displacement field from first frames."""
-        n_init = min(22, first_batch.shape[0])  # T is first dimension
-
-        if not self.config.verbose:
-            print("Computing initial displacement field...")
-
-        # Process first n_init frames - use "initial_w" task to avoid counting toward main progress
-        if n_init > 4:  # Use parallel for multiple frames
-            _, w = self._process_batch_parallel(
-                first_batch[:n_init],
-                first_batch_proc[:n_init],
-                np.zeros((self.reference_proc.shape[0], self.reference_proc.shape[1], self.reference_proc.shape[2], 3)),
-                task_id="initial_w"  # Don't count toward main progress
-            )
-        else:  # Serial for very few frames
+        # Check if CC initialization is enabled
+        use_cc = getattr(self.options, 'cc_initialization', False)
+        
+        if use_cc:
+            # For CC initialization, start with zero flow
+            # The CC will be computed in the workers
             Z, Y, X = self.reference_proc.shape[:3]
-            w = np.zeros((n_init, Z, Y, X, 3), dtype=np.float32)
-            for t in range(n_init):
-                w[t] = self._compute_flow_single(
-                    first_batch_proc[t],
-                    self.reference_proc
+            w_init = np.zeros((Z, Y, X, 3), dtype=np.float32)
+            
+            if not self.config.verbose:
+                print("Using cross-correlation initialization (w_init = 0)")
+        else:
+            # Original auto-initialization from first frames
+            n_init = min(22, first_batch.shape[0])  # T is first dimension
+
+            if not self.config.verbose:
+                print("Computing initial displacement field...")
+
+            # Process first n_init frames - use "initial_w" task to avoid counting toward main progress
+            if n_init > 4:  # Use parallel for multiple frames
+                _, w = self._process_batch_parallel(
+                    first_batch[:n_init],
+                    first_batch_proc[:n_init],
+                    np.zeros((self.reference_proc.shape[0], self.reference_proc.shape[1], self.reference_proc.shape[2], 3)),
+                    task_id="initial_w"  # Don't count toward main progress
                 )
+            else:  # Serial for very few frames
+                Z, Y, X = self.reference_proc.shape[:3]
+                w = np.zeros((n_init, Z, Y, X, 3), dtype=np.float32)
+                for t in range(n_init):
+                    w[t] = self._compute_flow_single(
+                        first_batch_proc[t],
+                        self.reference_proc
+                    )
 
-        # Average flows
-        w_init = np.mean(w, axis=0)
+            # Average flows
+            w_init = np.mean(w, axis=0)
 
-        if not self.config.verbose:
-            print("Done pre-registration to get w_init.")
+            if not self.config.verbose:
+                print("Done pre-registration to get w_init.")
 
         return w_init
 

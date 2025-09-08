@@ -68,7 +68,7 @@ def main():
     
     # Setup OF options for 3D motion correction
     options = OFOptions(
-        alpha=(0.01, 0.01, 0.01),  # Low regularization for 3D
+        alpha=(0.001, 0.001, 0.001),  # Low regularization for 3D
         quality_setting="quality",  # Balance speed and quality
         sigma=[[0.000001, 0.01, 0.01, 0.01]],
         levels=50,
