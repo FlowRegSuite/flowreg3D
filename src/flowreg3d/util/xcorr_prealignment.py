@@ -1,7 +1,7 @@
 import numpy as np
 from skimage.registration import phase_cross_correlation
 from flowreg3d.util.resize_util_3D import imresize2d_gauss_cubic
-from scipy.ndimage import shift as ndi_shift
+from flowreg3d.core.optical_flow_3d import imregister_wrapper
 
 def _proj_xy(v): return v.mean(axis=0)
 def _proj_xz(v): return v.mean(axis=1)
@@ -43,20 +43,12 @@ def estimate_rigid_xcorr_3d(ref_vol, mov_vol, target_hw=(256,256), target_z=None
 
     return -np.array([dx, dy, dz], dtype=np.float32)
 
-def prealign_for_flow(vol, dx_dy_dz, order=1):
-    if vol.ndim == 4:
-        out = np.empty_like(vol)
-        for c in range(vol.shape[-1]):
-            out[..., c] = ndi_shift(vol[..., c], shift=(dx_dy_dz[2], dx_dy_dz[1], dx_dy_dz[0]), order=order, mode='nearest')
-        return out
-    return ndi_shift(vol, shift=(dx_dy_dz[2], dx_dy_dz[1], dx_dy_dz[0]), order=order, mode='nearest')
-
-
 if __name__ == "__main__":
     import numpy as np
     from scipy.ndimage import shift as ndi_shift
     from scipy.ndimage import rotate
     import time
+    from flowreg3d.core.optical_flow_3d import imregister_wrapper
     
     print("Testing rigid cross-correlation alignment...")
     
@@ -90,7 +82,7 @@ if __name__ == "__main__":
     
     # Verify the shift works
     t0 = time.time()
-    aligned = prealign_for_flow(mov, est, order=1)
+    aligned = imregister_wrapper(mov, est[0], est[1], est[2], ref, interpolation_method='linear')
     t1 = time.time()
     alignment_error = np.mean(np.abs(aligned - ref))
     print(f"Alignment error:       {alignment_error:.6f}")
@@ -141,7 +133,7 @@ if __name__ == "__main__":
     
     # Align using estimated shift
     t0 = time.time()
-    aligned2 = prealign_for_flow(mov2, est2, order=1)
+    aligned2 = imregister_wrapper(mov2, est2[0], est2[1], est2[2], ref2, interpolation_method='linear')
     t1 = time.time()
     
     # Compute alignment errors

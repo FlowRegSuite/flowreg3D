@@ -7,7 +7,8 @@ import numpy as np
 from scipy.ndimage import shift as ndi_shift
 from scipy.ndimage import rotate, sobel
 import time
-from flowreg3d.util.xcorr_prealignment import estimate_rigid_xcorr_3d, prealign_for_flow
+from flowreg3d.util.xcorr_prealignment import estimate_rigid_xcorr_3d
+from flowreg3d.core.optical_flow_3d import imregister_wrapper
 
 
 def test_pure_translation():
@@ -42,7 +43,7 @@ def test_pure_translation():
     
     # Verify the shift works
     t0 = time.time()
-    aligned = prealign_for_flow(mov, est, order=1)
+    aligned = imregister_wrapper(mov, est[0], est[1], est[2], ref, interpolation_method='linear')
     t1 = time.time()
     alignment_error = np.mean(np.abs(aligned - ref))
     print(f"Alignment error:       {alignment_error:.6f}")
@@ -97,7 +98,7 @@ def test_translation_with_rotation():
     
     # Align using estimated shift
     t0 = time.time()
-    aligned = prealign_for_flow(mov, est, order=1)
+    aligned = imregister_wrapper(mov, est[0], est[1], est[2], ref, interpolation_method='linear')
     t1 = time.time()
     
     # Compute alignment errors
@@ -163,7 +164,7 @@ def test_multichannel_alignment():
     print(f"Estimation time:       {(t1-t0)*1000:.2f} ms")
     
     # Verify alignment
-    aligned = prealign_for_flow(mov, est, order=1)
+    aligned = imregister_wrapper(mov, est[0], est[1], est[2], ref, interpolation_method='linear')
     alignment_error = np.mean(np.abs(aligned - ref))
     print(f"Alignment error:       {alignment_error:.6f}")
     
@@ -272,7 +273,7 @@ def test_sign_convention():
     print(f"Time:                      {(t1-t0)*1000:.2f} ms")
     
     # Apply the shift and check
-    aligned = prealign_for_flow(mov, est, order=0)  # order=0 for nearest neighbor
+    aligned = imregister_wrapper(mov, est[0], est[1], est[2], ref, interpolation_method='nearest')
     aligned_point_pos = np.unravel_index(np.argmax(aligned), aligned.shape)
     print(f"After alignment, point at: Z={aligned_point_pos[0]}, Y={aligned_point_pos[1]}, X={aligned_point_pos[2]}")
     
@@ -349,7 +350,7 @@ def test_pipeline_integration():
     print(f"Rigid displacement estimated: dx={rigid[0]:.2f}, dy={rigid[1]:.2f}, dz={rigid[2]:.2f}")
     
     # Step 2: Pre-align
-    mov_pre = prealign_for_flow(mov, rigid, order=1)
+    mov_pre = imregister_wrapper(mov, rigid[0], rigid[1], rigid[2], ref, interpolation_method='linear')
     
     # Step 3: Simulate optical flow on pre-aligned (should be near zero if perfect)
     residual = np.zeros(3, dtype=np.float32)  # Assume perfect prealignment for this test
