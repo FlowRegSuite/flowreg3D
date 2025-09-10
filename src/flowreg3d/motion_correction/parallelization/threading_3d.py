@@ -68,9 +68,6 @@ class ThreadingExecutor3D(BaseExecutor3D):
         Returns:
             Tuple of (volume_index, registered_volume, flow_field)
         """
-        # Import prealignment functions if needed
-        from flowreg3d.util.xcorr_prealignment import estimate_rigid_xcorr_3d
-        
         # Extract CC parameters and remove them from flow_params
         use_cc = bool(flow_params.get('cc_initialization', False))
         cc_hw = flow_params.get('cc_hw', 256)
@@ -81,6 +78,9 @@ class ThreadingExecutor3D(BaseExecutor3D):
                             if k not in ['cc_initialization', 'cc_hw', 'cc_up']}
         
         if use_cc:
+            # Import prealignment functions only when needed
+            from flowreg3d.util.xcorr_prealignment import estimate_rigid_xcorr_3d
+            
             target_hw = cc_hw
             if isinstance(target_hw, int):
                 target_hw = (target_hw, target_hw)

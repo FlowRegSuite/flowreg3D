@@ -56,7 +56,6 @@ def _process_volume_worker(
     """
     # Import functions inside worker to avoid pickling issues with Numba
     from flowreg3d.core.optical_flow_3d import get_displacement, imregister_wrapper
-    from flowreg3d.util.xcorr_prealignment import estimate_rigid_xcorr_3d
     
     # Get arrays from shared memory
     batch = _SHM['batch'][1]
@@ -71,6 +70,10 @@ def _process_volume_worker(
     use_cc = bool(flow_param_scalars.get('cc_initialization', False))
     cc_hw = flow_param_scalars.get('cc_hw', 256)
     cc_up = int(flow_param_scalars.get('cc_up', 10))
+    
+    # Import prealignment function only if needed
+    if use_cc:
+        from flowreg3d.util.xcorr_prealignment import estimate_rigid_xcorr_3d
     
     # Create flow_params without CC parameters
     flow_params = {k: v for k, v in flow_param_scalars.items() 

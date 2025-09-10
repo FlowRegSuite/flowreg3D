@@ -72,15 +72,15 @@ class SequentialExecutor3D(BaseExecutor3D):
         registered = np.empty_like(batch)
         flow_fields = np.empty((T, Z, Y, X, 3), dtype=np.float32)
         
-        # Import prealignment functions if needed
-        from flowreg3d.util.xcorr_prealignment import estimate_rigid_xcorr_3d
-        
-        # Setup CC parameters
-        target_hw = cc_hw
-        if isinstance(target_hw, int):
-            target_hw = (target_hw, target_hw)
-        up = cc_up
-        weight = flow_params.get('weight', None)
+        # Import prealignment functions and setup CC parameters if needed
+        if use_cc:
+            from flowreg3d.util.xcorr_prealignment import estimate_rigid_xcorr_3d
+            
+            target_hw = cc_hw
+            if isinstance(target_hw, int):
+                target_hw = (target_hw, target_hw)
+            up = cc_up
+            weight = flow_params.get('weight', None)
         
         # Process each volume sequentially
         for t in range(T):
