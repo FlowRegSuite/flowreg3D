@@ -309,6 +309,53 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
     return flow
 
 
+def compute_3d_optical_flow_torch(frame1, frame2, flow_params):
+    import numpy as np
+    import torch
+
+    # Torch utils (normalization & Gaussian), Torch optical-flow core
+    try:
+        from flowreg3d.util.torch.image_processing_3D import normalize, apply_gaussian_filter
+        import flowreg3d.core.torch.optical_flow_3d as of3d
+    except ImportError:
+        # Fallback if your package layout keeps core.* at top level
+        from flowreg3d.util.torch.image_processing_3D import normalize, apply_gaussian_filter
+        import flowreg3d.core.optical_flow_3d as of3d
+
+    # Patch: force trilinear to avoid 'cubic' assertion in torch backend
+    if hasattr(of3d, "imregister_wrapper"):
+        _orig_imreg = of3d.imregister_wrapper
+        def _imregister_bilinear(f2, u, v, w, f1, interpolation_method="bilinear"):
+            return _orig_imreg(f2, u, v, w, f1, interpolation_method="bilinear")
+        of3d.imregister_wrapper = _imregister_bilinear
+
+    # Inputs → float64 torch tensors, ensure (Z,Y,X,C)
+    t1 = torch.from_numpy(frame1).to(torch.float64)
+    t2 = torch.from_numpy(frame2).to(torch.float64)
+    if t1.ndim == 3:
+        t1 = t1.unsqueeze(-1)
+        t2 = t2.unsqueeze(-1)
+
+    # Normalize moving to fixed’s range (NumPy parity: float64)
+    t1n = normalize(t1, ref=t1, channel_normalization="together")
+    t2n = normalize(t2, ref=t1, channel_normalization="together")
+
+    # Light pre-smoothing (match test-time expectations). If you don’t want this, remove both lines.
+    sigma_spatial = torch.tensor([0.5, 0.5, 0.5], dtype=torch.float64)
+    t1n = apply_gaussian_filter(t1n, sigma_spatial)
+    t2n = apply_gaussian_filter(t2n, sigma_spatial)
+
+    # Device + compute
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    t1n = t1n.to(device)
+    t2n = t2n.to(device)
+
+    with torch.no_grad():
+        flow = of3d.get_displacement(t1n, t2n, **flow_params)  # returns (Z,Y,X,3) float64
+
+    return flow.detach().cpu().numpy().astype(np.float64, copy=False)
+
+
 def create_displaced_frame_with_generator(video, generator_type='high_disp'):
     """
     Create a second 3D frame with synthetic motion displacements.
