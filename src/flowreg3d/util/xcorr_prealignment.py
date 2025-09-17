@@ -28,6 +28,18 @@ def estimate_rigid_xcorr_3d(ref_vol, mov_vol, target_hw=(256,256), target_z=None
     if (Th,Tw) != (H,W):
         pxy_r = imresize2d_gauss_cubic(pxy_r, (Th,Tw))
         pxy_m = imresize2d_gauss_cubic(pxy_m, (Th,Tw))
+    
+    # Pre-whiten + Hann window to avoid integer-bin locking on periodic patterns (XY plane)
+    pxy_r = pxy_r.astype(np.float32, copy=False)
+    pxy_m = pxy_m.astype(np.float32, copy=False)
+    pxy_r = pxy_r - pxy_r.mean()
+    pxy_m = pxy_m - pxy_m.mean()
+    hy = np.hanning(pxy_r.shape[0]).astype(np.float32)
+    hx = np.hanning(pxy_r.shape[1]).astype(np.float32)
+    win_xy = hy[:, None] * hx[None, :]
+    pxy_r = pxy_r * win_xy
+    pxy_m = pxy_m * win_xy
+    
     s_xy,_,_ = phase_cross_correlation(pxy_r, pxy_m, upsample_factor=up, normalization=normalization, disambiguate=disambiguate)
     dy = float(s_xy[0]) * sy
     dx = float(s_xy[1]) * sx
@@ -38,6 +50,18 @@ def estimate_rigid_xcorr_3d(ref_vol, mov_vol, target_hw=(256,256), target_z=None
     if Tz != Z or Tw != W:
         pxz_r = imresize2d_gauss_cubic(pxz_r, (Tz, Tw))
         pxz_m = imresize2d_gauss_cubic(pxz_m, (Tz, Tw))
+    
+    # Pre-whiten + Hann window to avoid integer-bin locking on periodic patterns (XZ plane)
+    pxz_r = pxz_r.astype(np.float32, copy=False)
+    pxz_m = pxz_m.astype(np.float32, copy=False)
+    pxz_r = pxz_r - pxz_r.mean()
+    pxz_m = pxz_m - pxz_m.mean()
+    hz = np.hanning(pxz_r.shape[0]).astype(np.float32)
+    hx = np.hanning(pxz_r.shape[1]).astype(np.float32)
+    win_xz = hz[:, None] * hx[None, :]
+    pxz_r = pxz_r * win_xz
+    pxz_m = pxz_m * win_xz
+    
     s_xz,_,_ = phase_cross_correlation(pxz_r, pxz_m, upsample_factor=up, normalization=normalization, disambiguate=disambiguate)
     dz = float(s_xz[0]) * sz
 
