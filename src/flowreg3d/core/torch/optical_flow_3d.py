@@ -65,7 +65,9 @@ def matlab_gradient(f: Tensor, spacing: float) -> Tensor:
 
 
 def imregister_wrapper(f2_level: Tensor, u: Tensor, v: Tensor, w: Tensor, f1_level: Tensor,
-                       interpolation_method: str = "cubic") -> Tensor:
+                       interpolation_method: str = "bilinear") -> Tensor:
+    assert interpolation_method in ("bilinear", "nearest"), \
+        "Only 'bilinear' and 'nearest' interpolation are supported with torch backend."
     if f2_level.ndim == 3:
         f2_level = f2_level.unsqueeze(-1)
         f1_level = f1_level.unsqueeze(-1)
@@ -82,7 +84,8 @@ def imregister_wrapper(f2_level: Tensor, u: Tensor, v: Tensor, w: Tensor, f1_lev
     gz = 2.0 * (map_z / (D - 1.0)) - 1.0
     grid = torch.stack([gx, gy, gz], dim=-1).unsqueeze(0)
     x_in = f2_level.permute(3, 0, 1, 2).unsqueeze(0)
-    sampled = F.grid_sample(x_in, grid, mode="bicubic" if interpolation_method.lower() == "cubic" else "bilinear",
+
+    sampled = F.grid_sample(x_in, grid, mode="bilinear",
         padding_mode="border", align_corners=True, ).squeeze(0).permute(1, 2, 3, 0)
     if f1_level.ndim == 3:
         f1_level = f1_level.unsqueeze(-1)
