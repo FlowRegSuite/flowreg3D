@@ -14,7 +14,7 @@ resize = imresize_fused_gauss_cubic3D
 
 def _median3d(x: Tensor, k: int = 5) -> Tensor:
     p = k // 2
-    x4 = F.pad(x[None, None], (p, p, p, p, p, p), mode="replicate")
+    x4 = F.pad(x[None, None], (p, p, p, p, p, p), mode="reflect")
     u = x4.unfold(2, k, 1).unfold(3, k, 1).unfold(4, k, 1)
     u = u.contiguous().view(1, 1, u.size(2), u.size(3), u.size(4), -1)
     return u.median(dim=-1).values[0, 0]

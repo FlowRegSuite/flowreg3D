@@ -10,13 +10,11 @@ from typing import Tuple
 import pytest
 import numpy as np
 
-from tests.fixtures import (
-    create_test_video_hdf5, 
-    create_simple_test_data, 
-    get_minimal_of_options,
-    cleanup_temp_files
-)
 from tests.fixtures_3d import (
+    create_test_video_hdf5,
+    create_simple_test_data,
+    get_minimal_of_options,
+    cleanup_temp_files,
     create_test_3d_video_hdf5,
     create_simple_3d_test_data,
     create_3d_reference_volume,
