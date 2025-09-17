@@ -3,19 +3,30 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from flowreg3d.core.level_solver_3d import level_solver_rbgs3d_torch
+from flowreg3d.core.torch.level_solver_3d import level_solver_rbgs3d_torch
 from flowreg3d.util.torch.resize_util_3D import imresize_fused_gauss_cubic3D
 
 Tensor = torch.Tensor
 resize = imresize_fused_gauss_cubic3D
 
 
-# --- helpers (kept outside the public API order) ---------------------------------
+def _replicate_pad3d(x: Tensor, pad) -> Tensor:
+    return F.pad(x[None, None], pad, mode="replicate")[0, 0]
+
+
+def _pad_spatial_const_4d_lastdim(x: Tensor, pads=(1,1,1,1,1,1), value=0.0) -> Tensor:
+    x5 = x.permute(3, 0, 1, 2).unsqueeze(0)
+    wL, wR = pads[4], pads[5]
+    hL, hR = pads[2], pads[3]
+    dL, dR = pads[0], pads[1]
+    x5 = F.pad(x5, (wL, wR, hL, hR, dL, dR), mode="constant", value=value)
+    return x5.squeeze(0).permute(1, 2, 3, 0)
+
 
 def _median3d(x: Tensor, k: int = 5) -> Tensor:
     p = k // 2
-    x4 = F.pad(x[None, None], (p, p, p, p, p, p), mode="reflect")
-    u = x4.unfold(2, k, 1).unfold(3, k, 1).unfold(4, k, 1)
+    x5 = F.pad(x[None, None], (p, p, p, p, p, p), mode="replicate")
+    u = x5.unfold(2, k, 1).unfold(3, k, 1).unfold(4, k, 1)
     u = u.contiguous().view(1, 1, u.size(2), u.size(3), u.size(4), -1)
     return u.median(dim=-1).values[0, 0]
 
@@ -53,8 +64,6 @@ def _normalize_weight_like_numpy(weight: Union[float, Tensor], C: int, shape3, d
         return t.unsqueeze(-1).expand(*shape3, C)
     raise ValueError("Unsupported weight shape")
 
-
-# --- public API functions (order/names mirror original NumPy file) ---------------
 
 def matlab_gradient(f: Tensor, spacing: float) -> Tensor:
     g = torch.zeros_like(f)
@@ -105,12 +114,12 @@ def warpingDepth(eta: float, levels: int, p: int, m: int, n: int) -> int:
 
 
 def add_boundary(f: Tensor) -> Tensor:
-    return F.pad(f, (1, 1, 1, 1, 1, 1), mode="replicate")
+    return _replicate_pad3d(f, (1, 1, 1, 1, 1, 1))
 
 
 def get_motion_tensor_gc(f1: Tensor, f2: Tensor, hz: float, hy: float, hx: float):
-    f1p = F.pad(f1, (1, 1, 1, 1, 1, 1), mode="replicate")
-    f2p = F.pad(f2, (1, 1, 1, 1, 1, 1), mode="replicate")
+    f1p = _replicate_pad3d(f1, (1, 1, 1, 1, 1, 1))
+    f2p = _replicate_pad3d(f2, (1, 1, 1, 1, 1, 1))
     gz1 = matlab_gradient(f1p, hz)
     gy1 = matlab_gradient(f1p.transpose(0, 1), hy).transpose(0, 1)
     gx1 = matlab_gradient(f1p.transpose(0, 2), hx).transpose(0, 2)
@@ -121,10 +130,10 @@ def get_motion_tensor_gc(f1: Tensor, f2: Tensor, hz: float, hy: float, hx: float
     fy = 0.5 * (gy1 + gy2)
     fz = 0.5 * (gz1 + gz2)
     ft = f2p - f1p
-    fx = F.pad(fx[1:-1, 1:-1, 1:-1], (1, 1, 1, 1, 1, 1), mode="replicate")
-    fy = F.pad(fy[1:-1, 1:-1, 1:-1], (1, 1, 1, 1, 1, 1), mode="replicate")
-    fz = F.pad(fz[1:-1, 1:-1, 1:-1], (1, 1, 1, 1, 1, 1), mode="replicate")
-    ft = F.pad(ft[1:-1, 1:-1, 1:-1], (1, 1, 1, 1, 1, 1), mode="replicate")
+    fx = _replicate_pad3d(fx[1:-1, 1:-1, 1:-1], (1, 1, 1, 1, 1, 1))
+    fy = _replicate_pad3d(fy[1:-1, 1:-1, 1:-1], (1, 1, 1, 1, 1, 1))
+    fz = _replicate_pad3d(fz[1:-1, 1:-1, 1:-1], (1, 1, 1, 1, 1, 1))
+    ft = _replicate_pad3d(ft[1:-1, 1:-1, 1:-1], (1, 1, 1, 1, 1, 1))
 
     def _second_diff(f: Tensor, hx_: float, hy_: float, hz_: float):
         fxx = torch.zeros_like(f)
@@ -271,7 +280,7 @@ def get_displacement(fixed: Tensor, moving: Tensor, alpha: Tuple[float, float, f
             v = add_boundary(resize(v[1:-1, 1:-1, 1:-1], level_size))
             w = add_boundary(resize(w[1:-1, 1:-1, 1:-1], level_size))
             tmp = imregister_wrapper(f2_level, u[1:-1, 1:-1, 1:-1] / cur_hx, v[1:-1, 1:-1, 1:-1] / cur_hy,
-                                               w[1:-1, 1:-1, 1:-1] / cur_hz, f1_level, interpolation_method="cubic", )
+                                               w[1:-1, 1:-1, 1:-1] / cur_hz, f1_level, interpolation_method="bilinear", )
         if tmp.ndim == 3:
             tmp = tmp.unsqueeze(-1)
 
@@ -307,7 +316,7 @@ def get_displacement(fixed: Tensor, moving: Tensor, alpha: Tuple[float, float, f
         weight_level = resize(weight_, f1_level.shape[:3])
         if weight_level.ndim < 4:
             weight_level = weight_level.unsqueeze(-1)
-        weight_level = F.pad(weight_level, (0, 0, 1, 1, 1, 1, 1, 1), value=0.0)
+        weight_level = _pad_spatial_const_4d_lastdim(weight_level, (1,1,1,1,1,1), value=0.0)
 
         alpha_scaling = 1.0 if i == min_level else (eta ** (-0.5 * i))
         alpha_i = (alpha_scaling * alpha[0], alpha_scaling * alpha[1], alpha_scaling * alpha[2])

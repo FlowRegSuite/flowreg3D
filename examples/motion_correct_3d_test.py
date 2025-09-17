@@ -23,6 +23,9 @@ from flowreg3d.motion_generation.motion_generators import (get_default_3d_genera
 from flowreg3d.util.random import fix_seed
 
 
+mode = "torch"
+
+
 def process_3d_stack(video_data):
     """
     Process 3D stack: resize 50%, crop 25px boundaries, normalize.
@@ -313,21 +316,8 @@ def compute_3d_optical_flow_torch(frame1, frame2, flow_params):
     import numpy as np
     import torch
 
-    # Torch utils (normalization & Gaussian), Torch optical-flow core
-    try:
-        from flowreg3d.util.torch.image_processing_3D import normalize, apply_gaussian_filter
-        import flowreg3d.core.torch.optical_flow_3d as of3d
-    except ImportError:
-        # Fallback if your package layout keeps core.* at top level
-        from flowreg3d.util.torch.image_processing_3D import normalize, apply_gaussian_filter
-        import flowreg3d.core.optical_flow_3d as of3d
-
-    # Patch: force trilinear to avoid 'cubic' assertion in torch backend
-    if hasattr(of3d, "imregister_wrapper"):
-        _orig_imreg = of3d.imregister_wrapper
-        def _imregister_bilinear(f2, u, v, w, f1, interpolation_method="bilinear"):
-            return _orig_imreg(f2, u, v, w, f1, interpolation_method="bilinear")
-        of3d.imregister_wrapper = _imregister_bilinear
+    from flowreg3d.util.torch.image_processing_3D import normalize, apply_gaussian_filter
+    import flowreg3d.core.torch.optical_flow_3d as of3d
 
     # Inputs → float64 torch tensors, ensure (Z,Y,X,C)
     t1 = torch.from_numpy(frame1).to(torch.float64)
@@ -589,7 +579,10 @@ def main():
     }
 
     # Compute 3D optical flow (preprocessing is done internally)
-    flow_est = compute_3d_optical_flow(original_cropped, displaced, flow_params)
+    if mode == "torch":
+        flow_est = compute_3d_optical_flow_torch(original_cropped, displaced, flow_params)
+    else:
+        flow_est = compute_3d_optical_flow(original_cropped, displaced, flow_params)
 
     # Apply motion correction using imregister_wrapper (backwards warping)
     print("\nApplying motion correction...")
