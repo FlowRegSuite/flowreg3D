@@ -91,7 +91,7 @@ def create_test_video_hdf5(
     try:
         from flowreg3d.util.io.factory import get_video_file_writer
     except ImportError:
-        from pyflowreg.util.io.factory import get_video_file_writer
+        from flowreg3d.util.io.factory import get_video_file_writer
 
     writer = get_video_file_writer(output_path, 'HDF5')
 
@@ -148,7 +148,7 @@ def get_minimal_of_options():
     try:
         from flowreg3d.motion_correction.OF_options import OFOptions
     except ImportError:
-        from pyflowreg.motion_correction.OF_options import OFOptions
+        from flowreg3d.motion_correction.OF_options import OFOptions
 
     # Create temporary directory for outputs
     temp_dir = tempfile.mkdtemp()
@@ -294,7 +294,7 @@ def create_test_3d_video_hdf5(
         writer = get_video_file_writer(output_path, 'HDF5')
     except ImportError:
         # Fallback to standard HDF5 writer if 3D not available
-        from pyflowreg.util.io.factory import get_video_file_writer
+        from flowreg3d.util.io.factory import get_video_file_writer
         writer = get_video_file_writer(output_path, 'HDF5')
     
     try:
@@ -390,7 +390,7 @@ def get_minimal_3d_of_options():
         from flowreg3d.motion_correction.OF_options_3D import OFOptions
     except ImportError:
         # Fallback if 3D version not available
-        from pyflowreg.motion_correction.OF_options import OFOptions
+        from flowreg3d.motion_correction.OF_options import OFOptions
     
     # Create temporary directory for outputs
     temp_dir = tempfile.mkdtemp()

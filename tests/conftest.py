@@ -20,8 +20,8 @@ from tests.fixtures_3d import (
     create_3d_reference_volume,
     get_minimal_3d_of_options
 )
-from pyflowreg.motion_correction.compensate_recording import RegistrationConfig
-from pyflowreg._runtime import RuntimeContext
+from flowreg3d.motion_correction.compensate_recording import RegistrationConfig
+from flowreg3d._runtime import RuntimeContext
 
 # Try to import 3D-specific components
 try:
@@ -40,7 +40,7 @@ def initialize_runtime_context():
     RuntimeContext.init(force=True)
     
     # Import parallelization module to trigger executor registration
-    import pyflowreg.motion_correction.parallelization
+    import flowreg3d.motion_correction.parallelization
     
     # Initialize 3D runtime context if available
     if HAS_3D_SUPPORT:
