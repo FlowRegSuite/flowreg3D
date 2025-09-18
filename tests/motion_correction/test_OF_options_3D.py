@@ -465,22 +465,22 @@ class TestConvenienceFunction3D:
         T, Z, Y, X, C = 5, 6, 16, 16, 2
         frames = np.random.rand(T, Z, Y, X, C).astype(np.float32)
         reference = np.random.rand(Z, Y, X, C).astype(np.float32)
-        
+
         # Mock the 3D functions
         mock_displacement = np.random.rand(Z, Y, X, 3).astype(np.float32)
         mock_compensated = np.random.rand(T, Z, Y, X, C).astype(np.float32)
-        
+
         with patch('flowreg3d.get_displacement') as mock_get_disp, \
-             patch('flowreg3d.compensate_sequence_uv') as mock_compensate:
-            
+             patch('flowreg3d.motion_correction.compensate_arr_3D.compensate_arr') as mock_compensate:
+
             mock_get_disp.return_value = mock_displacement
             mock_compensate.return_value = mock_compensated
-            
+
             from flowreg3d.motion_correction.OF_options_3D import compensate_inplace
-            
+
             options = OFOptions(alpha=(1.0, 2.0, 3.0))
             result_comp, result_disp = compensate_inplace(frames, reference, options)
-            
+
             # Should call get_displacement for each timepoint
             assert mock_get_disp.call_count == T
             mock_compensate.assert_called_once()

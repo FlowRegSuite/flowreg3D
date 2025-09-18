@@ -223,41 +223,23 @@ class TIFFFileWriter3D(VideoWriter3D):
         """Write accumulated frames and close file."""
         if self._frames:
             # Concatenate all frames
-            all_frames = np.concatenate(self._frames, axis=0)
-            
-            # Get dimensions
+            all_frames = np.concatenate(self._frames, axis=0)  # (T,Z,Y,X,C)
             T, Z, Y, X, C = all_frames.shape
-            
-            # Convert to ImageJ hyperstack format (TZCYX)
-            # This is the standard format that ImageJ/Fiji expects
-            if self.dim_order == 'TZYXC':
-                # Transpose from TZYXC to TZCYX for ImageJ
-                imagej_order = all_frames.transpose(0, 4, 1, 2, 3)  # T,Z,Y,X,C -> T,C,Z,Y,X
-            else:
-                # Handle custom orderings if needed
-                imagej_order = all_frames.transpose(0, 4, 1, 2, 3)
-            
+
+            # Transpose to canonical ImageJ order (T,Z,C,Y,X)
+            tzcyx = all_frames.transpose(0, 1, 4, 2, 3)  # (T,Z,Y,X,C) -> (T,Z,C,Y,X)
+
             # Write with ImageJ metadata
-            metadata = {
-                'axes': 'TCZYX',
-                'frames': T,
-                'slices': Z,
-                'channels': C
-            }
-            
-            # For ImageJ compatibility, we need to reshape the data
-            # ImageJ expects data as (T*Z*C, Y, X) for multi-page TIFF
-            imagej_flat = imagej_order.reshape(T * C * Z, Y, X)
-            
+            # tifffile will handle the internal flattening to pages
             tifffile.imwrite(
                 self.file_path,
-                imagej_flat,
+                tzcyx,
                 imagej=True,
-                metadata=metadata
+                metadata={'axes': 'TZCYX', 'frames': T, 'slices': Z, 'channels': C}
             )
-            
+
             print(f"Wrote 3D TIFF: {self.file_path} (T={T}, Z={Z}, Y={Y}, X={X}, C={C})")
-        
+
         self._frames = []
     
     def __enter__(self):

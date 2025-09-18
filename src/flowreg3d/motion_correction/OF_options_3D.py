@@ -634,7 +634,9 @@ def compensate_inplace(
 
 def get_mcp_schema() -> dict:
     """Get JSON schema for the model."""
-    return OFOptions.model_json_schema()
+    # Generate schema with mode='serialization' to respect Field(exclude=True)
+    # This should skip the preproc_funct field which can't be serialized
+    return OFOptions.model_json_schema(mode='serialization')
 
 
 if __name__ == "__main__":

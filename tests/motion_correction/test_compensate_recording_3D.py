@@ -374,12 +374,9 @@ class TestIO3DIntegration:
         mock_writer = MagicMock()
         mock_w_writer = MagicMock()
         
-        with patch.object(fast_3d_of_options, 'get_video_reader') as mock_get_reader, \
-             patch.object(fast_3d_of_options, 'get_video_writer') as mock_get_writer, \
+        with patch.object(OFOptions, 'get_video_reader', return_value=mock_reader), \
+             patch.object(OFOptions, 'get_video_writer', return_value=mock_writer), \
              patch('flowreg3d.util.io.factory.get_video_file_writer') as mock_get_w_writer:
-            
-            mock_get_reader.return_value = mock_reader
-            mock_get_writer.return_value = mock_writer
             mock_get_w_writer.return_value = mock_w_writer
             
             pipeline = BatchMotionCorrector(fast_3d_of_options)
@@ -406,11 +403,9 @@ class TestIO3DIntegration:
         mock_writer = MagicMock()
         mock_w_writer = MagicMock()
         
-        with patch.object(fast_3d_of_options, 'get_video_reader'), \
-             patch.object(fast_3d_of_options, 'get_video_writer') as mock_get_writer, \
+        with patch.object(OFOptions, 'get_video_reader'), \
+             patch.object(OFOptions, 'get_video_writer', return_value=mock_writer), \
              patch('flowreg3d.util.io.factory.get_video_file_writer') as mock_get_w_writer:
-            
-            mock_get_writer.return_value = mock_writer
             mock_get_w_writer.return_value = mock_w_writer
             
             pipeline = BatchMotionCorrector(fast_3d_of_options)
@@ -491,8 +486,8 @@ class TestErrorHandling3D:
         fast_3d_of_options.save_w = True
         
         # Mock writer creation to fail
-        with patch.object(fast_3d_of_options, 'get_video_reader'), \
-             patch.object(fast_3d_of_options, 'get_video_writer'), \
+        with patch.object(OFOptions, 'get_video_reader'), \
+             patch.object(OFOptions, 'get_video_writer'), \
              patch('flowreg3d.util.io.factory.get_video_file_writer') as mock_get_w_writer:
             
             mock_get_w_writer.side_effect = Exception("Writer creation failed")
