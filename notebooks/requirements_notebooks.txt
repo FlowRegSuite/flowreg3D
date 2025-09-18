@@ -1,2 +1,6 @@
 matplotlib
 IPython
+ipywidgets
+pyvista
+jupyter_rfb
+ipyvtklink
