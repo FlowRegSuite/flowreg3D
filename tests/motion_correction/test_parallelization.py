@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from typing import List, Tuple
 
-from flowreg3d.motion_correction.compensate_arr_3D import compensate_arr
+from flowreg3d.motion_correction.compensate_arr_3D import compensate_arr_3D
 from flowreg3d.motion_correction.compensate_recording_3D import BatchMotionCorrector, RegistrationConfig
 from flowreg3d.motion_correction.OF_options_3D import OFOptions, OutputFormat
 from flowreg3d._runtime import RuntimeContext
@@ -208,7 +208,7 @@ class TestProgressCallbacks:
 
         # Run with callback
         options = OFOptions(quality_setting="fast", buffer_size=5)
-        registered, flow = compensate_arr(video, reference, options, progress_callback)
+        registered, flow = compensate_arr_3D(video, reference, options, progress_callback)
 
         # Verify callback was called
         assert len(progress_calls) > 0, "Progress callback was not called"
@@ -391,7 +391,7 @@ class TestProgressCallbacks:
         # Time without callback
         options = OFOptions(quality_setting="fast", levels=2, iterations=3)
         start = time.time()
-        registered1, flow1 = compensate_arr(video, reference, options)
+        registered1, flow1 = compensate_arr_3D(video, reference, options)
         time_without = time.time() - start
 
         # Time with callback
@@ -400,7 +400,7 @@ class TestProgressCallbacks:
             call_count[0] += 1
 
         start = time.time()
-        registered2, flow2 = compensate_arr(video, reference, options, progress_callback)
+        registered2, flow2 = compensate_arr_3D(video, reference, options, progress_callback)
         time_with = time.time() - start
 
         print(f"Time without callback: {time_without:.3f}s")
@@ -426,4 +426,4 @@ if __name__ == "__main__":
     test_prog.test_progress_callback_with_compensate_arr()
     test_prog.test_multiple_callbacks_registered()
 
-    print("\n✓ All 3D parallelization tests passed!")
+    print("\nAll 3D parallelization tests passed!")

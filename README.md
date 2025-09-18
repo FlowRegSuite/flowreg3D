@@ -11,12 +11,11 @@ This project is still in an **alpha stage**. Expect rapid changes, incomplete fe
 - The API may evolve as we stabilize core functionality.  
 - Documentation and examples are incomplete.  
 - Feedback and bug reports are especially valuable at this stage.
+- GPU implementation currently produces numerical differences compared to the CPU version and might require different parameter settings.
 
 # <img src="https://raw.githubusercontent.com/FlowRegSuite/flowreg3d/refs/heads/main/img/flowreglogo.png" alt="FlowReg logo" height="64"> flowreg3D
 
-Python implementation of volumetric optical flow for motion correction in 3D fluorescence microscopy. Building on the 2D Flow-Registration insights, flowreg3D provides **natively dense**, **natively 3D**, and **natively subpixel-precision** motion analysis and correction for volumetric microscopy data.
-
-It builds on the Flow-Registration toolbox for compensation and stabilization of multichannel microscopy videos and extends it to true 3D iamging. 
+Python implementation of volumetric optical flow for motion correction in 3D fluorescence microscopy. Building on the 2D Flow-Registration insights, flowreg3D provides **natively 3D dense** motion analysis and correction with **subpixel-precision** for non-rigid motion volumetric microscopy data.
 
 **Related projects**
 - Flow-Registration: https://github.com/FlowRegSuite/flow_registration
@@ -26,6 +25,11 @@ It builds on the Flow-Registration toolbox for compensation and stabilization of
 
 ![Fig1](https://raw.githubusercontent.com/FlowRegSuite/flowreg3d/refs/heads/main/img/bg.jpg)
 
+## Features
+
+- **3D Variational Optical Flow**: Directly estimates dense 3D motion fields between volumetric frames, capturing complex non-rigid deformations with subpixel accuracy.
+- **GPU Acceleration**: Optional torch backend with fully GPU-optimized solver for fast processing of large 3D frames.
+- **Parallelized Processing**: Efficiently handles long sequences of volumetric data.
 
 ## Requirements
 
@@ -47,10 +51,10 @@ conda activate flowreg3d
 pip install flowreg3d
 ```
 
-To install the project with full visualization support, you can install it with the ```vis``` extra:
+To install the project with GPU support, you can install it with the ```gpu``` extra:
 
 ```bash
-pip install flowreg3d[vis]
+pip install flowreg3d[gpu]
 ```
 
 ## Getting started
@@ -61,29 +65,10 @@ The plugin supports most of the commonly used file types such as HDF5, tiff stac
 
 ## Dataset
 
-The 3D motion benchmark dataset used for our evaluations will be available soon. Meanwhile, synthetic test data with controllable 3D motion fields can be generated using the included `motion_generation` module, which creates biologically-informed displacement patterns including injection/recoil events, rotations, scanning jitter, and other microscopy-specific artifacts.
+The 3D motion benchmark dataset used for our evaluations will be available for download soon. Meanwhile, synthetic test data with controllable 3D motion fields can be generated using the included `motion_generation` module, which creates biologically-informed displacement patterns including injection/recoil events, rotations, scanning jitter, and other microscopy-specific artifacts.
 
 ## Citation
-
-Details on the original method and video results can be found [here](https://www.snnu.uni-saarland.de/flow-registration/).
 
 If you use parts of this code or the plugin for your work, please cite
 
 > "flowreg3D: Volumetric optical flow for motion analysis and correction in 3D fluorescence microscopy," (in preparation), 2025.
-
-
-and for Flow-Registration
-
-> P. Flotho, S. Nomura, B. Kuhn and D. J. Strauss, "Software for Non-Parametric Image Registration of 2-Photon Imaging Data," J Biophotonics, 2022. [doi:https://doi.org/10.1002/jbio.202100330](https://doi.org/10.1002/jbio.202100330)
-
-BibTeX entry
-```
-@article{flotea2022a,
-    author = {Flotho, P. and Nomura, S. and Kuhn, B. and Strauss, D. J.},
-    title = {Software for Non-Parametric Image Registration of 2-Photon Imaging Data},
-    year = {2022},
-  journal = {J Biophotonics},
-  doi = {https://doi.org/10.1002/jbio.202100330}
-}
-```
-

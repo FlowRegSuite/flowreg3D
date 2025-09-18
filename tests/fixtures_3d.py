@@ -87,11 +87,8 @@ def create_test_video_hdf5(
     # Convert to uint16 for more realistic microscopy data
     frames = (frames * 65535).astype(np.uint16)
 
-    # Write using video writer - try flowreg3d first, fallback to pyflowreg
-    try:
-        from flowreg3d.util.io.factory import get_video_file_writer
-    except ImportError:
-        from flowreg3d.util.io.factory import get_video_file_writer
+    # Write using video writer
+    from flowreg3d.util.io.factory import get_video_file_writer
 
     writer = get_video_file_writer(output_path, 'HDF5')
 
@@ -145,10 +142,7 @@ def get_minimal_of_options():
     Returns:
         Basic OFOptions configuration suitable for testing
     """
-    try:
-        from flowreg3d.motion_correction.OF_options import OFOptions
-    except ImportError:
-        from flowreg3d.motion_correction.OF_options import OFOptions
+    from flowreg3d.motion_correction.OF_options import OFOptions
 
     # Create temporary directory for outputs
     temp_dir = tempfile.mkdtemp()
@@ -289,13 +283,8 @@ def create_test_3d_video_hdf5(
     frames = (frames * 65535).astype(np.uint16)
     
     # Write using 3D video writer
-    try:
-        from flowreg3d.util.io.factory import get_video_file_writer
-        writer = get_video_file_writer(output_path, 'HDF5')
-    except ImportError:
-        # Fallback to standard HDF5 writer if 3D not available
-        from flowreg3d.util.io.factory import get_video_file_writer
-        writer = get_video_file_writer(output_path, 'HDF5')
+    from flowreg3d.util.io.factory import get_video_file_writer
+    writer = get_video_file_writer(output_path, 'HDF5')
     
     try:
         # Write frames in batches to simulate real usage
@@ -386,11 +375,7 @@ def get_minimal_3d_of_options():
     Returns:
         Basic 3D OFOptions configuration suitable for testing
     """
-    try:
-        from flowreg3d.motion_correction.OF_options_3D import OFOptions
-    except ImportError:
-        # Fallback if 3D version not available
-        from flowreg3d.motion_correction.OF_options import OFOptions
+    from flowreg3d.motion_correction.OF_options_3D import OFOptions
     
     # Create temporary directory for outputs
     temp_dir = tempfile.mkdtemp()
@@ -484,11 +469,7 @@ def apply_3d_motion_to_volume(volume: np.ndarray, motion_field: np.ndarray) -> n
     Returns:
         Moved volume with same shape as input
     """
-    try:
-        from scipy.ndimage import map_coordinates
-    except ImportError:
-        # Fallback - return original volume if scipy not available
-        return volume.copy()
+    from scipy.ndimage import map_coordinates
     
     Z, Y, X = volume.shape[:3]
     C = volume.shape[3] if volume.ndim == 4 else 1
@@ -564,10 +545,7 @@ if __name__ == "__main__":
     print(f"Created 3D motion field with shape: {motion.shape}")
     
     # Test minimal 3D options
-    try:
-        options = get_minimal_3d_of_options()
-        print(f"Created minimal 3D options: alpha={options.alpha}, sigma shape={np.array(options.sigma).shape}")
-    except ImportError as e:
-        print(f"Could not create 3D options: {e}")
+    options = get_minimal_3d_of_options()
+    print(f"Created minimal 3D options: alpha={options.alpha}, sigma shape={np.array(options.sigma).shape}")
     
     print("3D fixtures test completed!")

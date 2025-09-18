@@ -20,18 +20,13 @@ from tests.fixtures_3d import (
     create_3d_reference_volume,
     get_minimal_3d_of_options
 )
-from flowreg3d.motion_correction.compensate_recording import RegistrationConfig
+from flowreg3d.motion_correction.compensate_recording_3D import RegistrationConfig
 from flowreg3d._runtime import RuntimeContext
 
-# Try to import 3D-specific components
-try:
-    from flowreg3d.motion_correction.compensate_recording_3D import RegistrationConfig as RegistrationConfig3D
-    from flowreg3d._runtime import RuntimeContext as RuntimeContext3D
-    HAS_3D_SUPPORT = True
-except ImportError:
-    RegistrationConfig3D = RegistrationConfig
-    RuntimeContext3D = RuntimeContext
-    HAS_3D_SUPPORT = False
+# Import 3D-specific components
+from flowreg3d.motion_correction.compensate_recording_3D import RegistrationConfig as RegistrationConfig3D
+from flowreg3d._runtime import RuntimeContext as RuntimeContext3D
+HAS_3D_SUPPORT = True
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -41,14 +36,9 @@ def initialize_runtime_context():
     
     # Import parallelization module to trigger executor registration
     import flowreg3d.motion_correction.parallelization
-    
-    # Initialize 3D runtime context if available
-    if HAS_3D_SUPPORT:
-        try:
-            RuntimeContext3D.init(force=True)
-            import flowreg3d.motion_correction.parallelization
-        except ImportError:
-            pass
+
+    # Initialize 3D runtime context
+    RuntimeContext3D.init(force=True)
 
 
 @pytest.fixture(scope="function")
@@ -215,8 +205,6 @@ def available_executors():
 @pytest.fixture(scope="function")
 def small_3d_test_video(temp_dir):
     """Create a small 3D test video file for quick testing."""
-    if not HAS_3D_SUPPORT:
-        pytest.skip("3D support not available")
     
     shape = (8, 4, 16, 16, 2)  # Small 3D size for fast tests
     video_path = create_test_3d_video_hdf5(
@@ -232,8 +220,6 @@ def small_3d_test_video(temp_dir):
 @pytest.fixture(scope="function")
 def medium_3d_test_video(temp_dir):
     """Create a medium-sized 3D test video for more comprehensive testing."""
-    if not HAS_3D_SUPPORT:
-        pytest.skip("3D support not available")
     
     shape = (20, 8, 32, 32, 2)  # Medium 3D size
     video_path = create_test_3d_video_hdf5(
@@ -249,8 +235,6 @@ def medium_3d_test_video(temp_dir):
 @pytest.fixture(scope="function")
 def static_3d_test_video(temp_dir):
     """Create a static 3D test video for baseline testing."""
-    if not HAS_3D_SUPPORT:
-        pytest.skip("3D support not available")
     
     shape = (12, 6, 20, 20, 2)
     video_path = create_test_3d_video_hdf5(
@@ -266,8 +250,6 @@ def static_3d_test_video(temp_dir):
 @pytest.fixture(scope="function")
 def test_3d_data_array():
     """Create 3D test data as numpy array without file I/O."""
-    if not HAS_3D_SUPPORT:
-        pytest.skip("3D support not available")
     
     shape = (15, 6, 24, 24, 2)
     data = create_simple_3d_test_data(shape)
@@ -277,8 +259,6 @@ def test_3d_data_array():
 @pytest.fixture(scope="function")
 def basic_3d_of_options(temp_dir):
     """Create basic 3D OF_options for testing."""
-    if not HAS_3D_SUPPORT:
-        pytest.skip("3D support not available")
     
     options = get_minimal_3d_of_options()
     options.output_path = temp_dir
@@ -288,8 +268,6 @@ def basic_3d_of_options(temp_dir):
 @pytest.fixture(scope="function")
 def fast_3d_of_options(temp_dir):
     """Create very fast 3D OF_options for quick testing."""
-    if not HAS_3D_SUPPORT:
-        pytest.skip("3D support not available")
     
     options = get_minimal_3d_of_options()
     options.output_path = temp_dir
@@ -303,8 +281,6 @@ def fast_3d_of_options(temp_dir):
 @pytest.fixture(scope="function")
 def sequential_3d_config():
     """Create configuration for sequential 3D executor."""
-    if not HAS_3D_SUPPORT:
-        pytest.skip("3D support not available")
     
     return RegistrationConfig3D(
         n_jobs=1,
@@ -317,8 +293,6 @@ def sequential_3d_config():
 @pytest.fixture(scope="function")
 def threading_3d_config():
     """Create configuration for threading 3D executor."""
-    if not HAS_3D_SUPPORT:
-        pytest.skip("3D support not available")
     
     return RegistrationConfig3D(
         n_jobs=2,
@@ -331,8 +305,6 @@ def threading_3d_config():
 @pytest.fixture(scope="function")
 def multiprocessing_3d_config():
     """Create configuration for multiprocessing 3D executor."""
-    if not HAS_3D_SUPPORT:
-        pytest.skip("3D support not available")
     
     return RegistrationConfig3D(
         n_jobs=2,
@@ -345,8 +317,6 @@ def multiprocessing_3d_config():
 @pytest.fixture(params=["sequential3d", "threading3d", "multiprocessing3d"])
 def executor_3d_config(request):
     """Parametrized fixture to test all 3D executor types."""
-    if not HAS_3D_SUPPORT:
-        pytest.skip("3D support not available")
     
     return RegistrationConfig3D(
         n_jobs=2,
@@ -359,8 +329,6 @@ def executor_3d_config(request):
 @pytest.fixture(scope="function")
 def reference_3d_volume():
     """Create a simple 3D reference volume for testing."""
-    if not HAS_3D_SUPPORT:
-        pytest.skip("3D support not available")
     
     Z, Y, X, C = 6, 20, 20, 2
     ref = create_3d_reference_volume((Z, Y, X, C))
@@ -370,13 +338,7 @@ def reference_3d_volume():
 @pytest.fixture(scope="session")
 def available_3d_executors():
     """Get list of available 3D executors for testing."""
-    if not HAS_3D_SUPPORT:
-        return []
-    
-    try:
-        return list(RuntimeContext3D.get_available_parallelization())
-    except:
-        return ['sequential3d']  # Fallback
+    return list(RuntimeContext3D.get_available_parallelization())
 
 
 # Pytest markers

@@ -5,18 +5,9 @@ Verifies CPU-Torch parity for normalization and filtering operations.
 
 import numpy as np
 import torch
-from pathlib import Path
-import sys
 from collections import deque
 
-try:
-    import pytest
-    HAS_PYTEST = True
-except ImportError:
-    HAS_PYTEST = False
-
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / 'src'))
+import pytest
 
 from flowreg3d.util.image_processing_3D import (
     normalize as normalize_cpu,
@@ -210,25 +201,12 @@ class TestGaussianFilter:
         data = np.random.randn(8, 8, 8, 1).astype(np.float32)
         sigma = np.array([1.0, 1.0, 1.0])
 
-        if HAS_PYTEST:
-            with pytest.raises(ValueError, match="Only 'reflect' mode is supported"):
-                _ = apply_gaussian_torch(data, sigma, mode='constant')
+        with pytest.raises(ValueError, match="Only 'reflect' mode is supported"):
+            _ = apply_gaussian_torch(data, sigma, mode='constant')
 
-            with pytest.raises(ValueError, match="Only 'reflect' mode is supported"):
-                _ = apply_gaussian_torch(data, sigma, mode='wrap')
-        else:
-            # Manual exception testing without pytest
-            try:
-                _ = apply_gaussian_torch(data, sigma, mode='constant')
-                assert False, "Should have raised ValueError for mode='constant'"
-            except ValueError as e:
-                assert "Only 'reflect' mode is supported" in str(e)
+        with pytest.raises(ValueError, match="Only 'reflect' mode is supported"):
+            _ = apply_gaussian_torch(data, sigma, mode='wrap')
 
-            try:
-                _ = apply_gaussian_torch(data, sigma, mode='wrap')
-                assert False, "Should have raised ValueError for mode='wrap'"
-            except ValueError as e:
-                assert "Only 'reflect' mode is supported" in str(e)
 
     def test_gaussian_3d_direct(self):
         """Test direct 3D Gaussian filtering (unsupported dimensionality path)."""

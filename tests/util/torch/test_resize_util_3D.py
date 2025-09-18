@@ -5,17 +5,6 @@ Verifies CPU-Torch parity for resize operations.
 
 import numpy as np
 import torch
-from pathlib import Path
-import sys
-
-try:
-    import pytest
-    HAS_PYTEST = True
-except ImportError:
-    HAS_PYTEST = False
-
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / 'src'))
 
 from flowreg3d.util.resize_util_3D import (
     imresize_fused_gauss_cubic3D as imresize_cpu,
