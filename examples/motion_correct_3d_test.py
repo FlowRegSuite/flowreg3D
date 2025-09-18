@@ -23,7 +23,7 @@ from flowreg3d.motion_generation.motion_generators import (get_default_3d_genera
 from flowreg3d.util.random import fix_seed
 
 
-mode = "torch"
+mode = "numba"
 
 
 def process_3d_stack(video_data):
@@ -293,7 +293,7 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
     flow = get_displacement(f1_norm, f2_norm, **flow_params)
 
     t_elapsed = time.perf_counter() - t0
-    print(f"  Flow computation time: {t_elapsed:.2f} seconds")
+    print(f"  Flow computation time: {t_elapsed:.2f} seconds with numba backend.")
 
     # Print flow statistics
     print(f"  Flow field shape: {flow.shape}")
@@ -340,8 +340,10 @@ def compute_3d_optical_flow_torch(frame1, frame2, flow_params):
     t1n = t1n.to(device)
     t2n = t2n.to(device)
 
+    start = time.time()
     with torch.no_grad():
         flow = of3d.get_displacement(t1n, t2n, **flow_params)  # returns (Z,Y,X,3) float64
+    print(f"  Flow computation time: {time.time() - start:.2f} seconds with torch backend.")
 
     return flow.detach().cpu().numpy().astype(np.float64, copy=False)
 

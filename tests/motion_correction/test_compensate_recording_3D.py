@@ -19,6 +19,7 @@ from flowreg3d.motion_correction.compensate_recording_3D import (
     compensate_recording
 )
 from flowreg3d._runtime import RuntimeContext
+from flowreg3d.motion_correction.OF_options_3D import OFOptions
 
 
 class TestRegistrationConfig3D:

@@ -342,7 +342,8 @@ class TestIO3DIntegration:
             mock_factory.assert_called_once_with(
                 test_volume,
                 buffer_size=15,
-                bin_size=1
+                bin_size=1,
+                dim_order='TZYX'
             )
             assert reader == mock_reader
             
@@ -471,7 +472,7 @@ class TestConvenienceFunction3D:
         mock_compensated = np.random.rand(T, Z, Y, X, C).astype(np.float32)
 
         with patch('flowreg3d.get_displacement') as mock_get_disp, \
-             patch('flowreg3d.motion_correction.compensate_arr_3D.compensate_arr') as mock_compensate:
+             patch('flowreg3d.motion_correction.compensate_arr_3D.compensate_arr_3D') as mock_compensate:
 
             mock_get_disp.return_value = mock_displacement
             mock_compensate.return_value = mock_compensated
