@@ -48,6 +48,7 @@ def level_solver_rbgs3d_torch(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, 
         denom_u_data = torch.zeros_like(u)
         denom_v_data = torch.zeros_like(u)
         denom_w_data = torch.zeros_like(u)
+        S = W * psi_data
 
         cK = slice(1, P - 1)
         cJ = slice(1, M - 1)
@@ -100,9 +101,9 @@ def level_solver_rbgs3d_torch(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, 
                     psi_smooth.fill_(1)
 
                 S = W * psi_data
-                denom_u_data = (S * J11).sum(3).maximum(epsv)
-                denom_v_data = (S * J22).sum(3).maximum(epsv)
-                denom_w_data = (S * J33).sum(3).maximum(epsv)
+                denom_u_data = (S * J11).sum(3)
+                denom_v_data = (S * J22).sum(3)
+                denom_w_data = (S * J33).sum(3)
 
             _set_boundary3d_(du)
             _set_boundary3d_(dv)
@@ -163,9 +164,15 @@ def level_solver_rbgs3d_torch(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, 
             du_int = du[cK, cJ, cI]
             dv_int = dv[cK, cJ, cI]
             dw_int = dw[cK, cJ, cI]
-            new_u = (1 - omega) * du_int + omega * (num_u[cK, cJ, cI] / torch.maximum(den_u[cK, cJ, cI], epsv))
-            new_v = (1 - omega) * dv_int + omega * (num_v[cK, cJ, cI] / torch.maximum(den_v[cK, cJ, cI], epsv))
-            new_w = (1 - omega) * dw_int + omega * (num_w[cK, cJ, cI] / torch.maximum(den_w[cK, cJ, cI], epsv))
+            den_u_loc = den_u[cK, cJ, cI]
+            den_v_loc = den_v[cK, cJ, cI]
+            den_w_loc = den_w[cK, cJ, cI]
+            frac_u = torch.where(den_u_loc != 0, num_u[cK, cJ, cI] / den_u_loc, torch.zeros_like(den_u_loc))
+            frac_v = torch.where(den_v_loc != 0, num_v[cK, cJ, cI] / den_v_loc, torch.zeros_like(den_v_loc))
+            frac_w = torch.where(den_w_loc != 0, num_w[cK, cJ, cI] / den_w_loc, torch.zeros_like(den_w_loc))
+            new_u = (1 - omega) * du_int + omega * frac_u
+            new_v = (1 - omega) * dv_int + omega * frac_v
+            new_w = (1 - omega) * dw_int + omega * frac_w
             du[cK, cJ, cI] = torch.where(Rmask, new_u, du_int)
             dv[cK, cJ, cI] = torch.where(Rmask, new_v, dv_int)
             dw[cK, cJ, cI] = torch.where(Rmask, new_w, dw_int)
@@ -212,9 +219,15 @@ def level_solver_rbgs3d_torch(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, 
             du_int = du[cK, cJ, cI]
             dv_int = dv[cK, cJ, cI]
             dw_int = dw[cK, cJ, cI]
-            new_u = (1 - omega) * du_int + omega * (num_u[cK, cJ, cI] / torch.maximum(den_u[cK, cJ, cI], epsv))
-            new_v = (1 - omega) * dv_int + omega * (num_v[cK, cJ, cI] / torch.maximum(den_v[cK, cJ, cI], epsv))
-            new_w = (1 - omega) * dw_int + omega * (num_w[cK, cJ, cI] / torch.maximum(den_w[cK, cJ, cI], epsv))
+            den_u_loc = den_u[cK, cJ, cI]
+            den_v_loc = den_v[cK, cJ, cI]
+            den_w_loc = den_w[cK, cJ, cI]
+            frac_u = torch.where(den_u_loc != 0, num_u[cK, cJ, cI] / den_u_loc, torch.zeros_like(den_u_loc))
+            frac_v = torch.where(den_v_loc != 0, num_v[cK, cJ, cI] / den_v_loc, torch.zeros_like(den_v_loc))
+            frac_w = torch.where(den_w_loc != 0, num_w[cK, cJ, cI] / den_w_loc, torch.zeros_like(den_w_loc))
+            new_u = (1 - omega) * du_int + omega * frac_u
+            new_v = (1 - omega) * dv_int + omega * frac_v
+            new_w = (1 - omega) * dw_int + omega * frac_w
             du[cK, cJ, cI] = torch.where(Bmask, new_u, du_int)
             dv[cK, cJ, cI] = torch.where(Bmask, new_v, dv_int)
             dw[cK, cJ, cI] = torch.where(Bmask, new_w, dw_int)

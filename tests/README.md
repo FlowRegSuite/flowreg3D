@@ -1,4 +1,4 @@
-# PyFlowReg Test Suite
+# flowreg3D Test Suite
 
 This directory contains the pytest-based test suite for PyFlowReg.
 

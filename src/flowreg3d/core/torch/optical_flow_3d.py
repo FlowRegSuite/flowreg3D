@@ -178,13 +178,6 @@ def get_motion_tensor_gc(f1: Tensor, f2: Tensor, hz: float, hy: float, hx: float
     J24 = reg_x * fxy * fxt + reg_y * fyy * fyt + reg_z * fyz * fzt
     J34 = reg_x * fxz * fxt + reg_y * fyz * fyt + reg_z * fzz * fzt
     J44 = reg_x * fxt * fxt + reg_y * fyt * fyt + reg_z * fzt * fzt
-    for arr in (J11, J22, J33, J44, J12, J13, J23, J14, J24, J34):
-        arr[:, :, 0] = 0
-        arr[:, :, -1] = 0
-        arr[:, 0, :] = 0
-        arr[:, -1, :] = 0
-        arr[0, :, :] = 0
-        arr[-1, :, :] = 0
     return J11, J22, J33, J44, J12, J13, J23, J14, J24, J34
 
 
