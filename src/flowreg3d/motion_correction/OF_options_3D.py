@@ -117,6 +117,7 @@ class OFOptions(BaseModel):
     input_file: Optional[Union[str, Path, np.ndarray, VideoReader]] = Field(
         None, description="Path/ndarray/VideoReader for input"
     )
+    input_dim_order: str = Field("TZYX", description="Input axes, e.g. 'TZYX' or 'TZYXC'")
     output_path: Path = Field(Path("results"), description="Output directory")
     output_format: OutputFormat = Field(OutputFormat.MAT, description="Output format")
     output_file_name: Optional[str] = Field(None, description="Custom output filename")
@@ -343,7 +344,8 @@ class OFOptions(BaseModel):
         self._video_reader = get_video_file_reader(
             self.input_file,
             buffer_size=self.buffer_size,
-            bin_size=self.bin_size
+            bin_size=self.bin_size,
+            dim_order=self.input_dim_order
         )
         
         # Store reader back in input_file (matches MATLAB line 247)
@@ -407,12 +409,24 @@ class OFOptions(BaseModel):
 
         # List of frame indices - preregister
         if isinstance(self.reference_frames, list) and video_reader is not None:
-            frames = video_reader[self.reference_frames]  # (T,H,W,C) using array-like indexing
+            frames = video_reader[self.reference_frames]  # (T,Z,Y,X,C)
 
-            if frames.ndim != 4:
-                if frames.ndim == 3:
-                    return frames  # Single frame (H,W,C)
-                raise ValueError("read_frames must return (H,W,C) or (T,H,W,C)")
+            # For 3D data, properly handle the indices case
+            if frames.ndim == 5:
+                # 3D case: (T,Z,Y,X,C) - compute mean over time axis
+                frames = frames.mean(axis=0)  # (Z,Y,X,C)
+                return frames
+            elif frames.ndim == 4:
+                # Could be single 3D volume (Z,Y,X,C) or 2D sequence (T,H,W,C)
+                # Check if this is already a single 3D volume
+                if hasattr(video_reader, 'depth') and video_reader.depth > 1:
+                    return frames  # Already (Z,Y,X,C)
+                # Otherwise continue with existing 2D logic below
+                pass
+            elif frames.ndim == 3:
+                return frames  # Single frame (H,W,C) or (Z,Y,X)
+            else:
+                raise ValueError("read_frames must return (H,W,C), (T,H,W,C), or (T,Z,Y,X,C)")
 
             # Convert from (T,H,W,C) to (H,W,C,T) for compatibility
             frames = np.transpose(frames, (1, 2, 3, 0))  # Now (H,W,C,T)

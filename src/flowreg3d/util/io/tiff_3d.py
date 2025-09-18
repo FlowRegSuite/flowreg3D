@@ -99,7 +99,7 @@ class TIFFFileReader3D(VideoReader3D):
         """Parse array dimensions according to dim_order."""
         shape = self._data_array.shape
         ndim = len(shape)
-        
+
         # Handle case where C is implicit (single channel)
         if 'C' not in self.dim_order:
             if ndim == len(self.dim_order):
@@ -113,12 +113,19 @@ class TIFFFileReader3D(VideoReader3D):
             else:
                 raise ValueError(f"Cannot parse dimensions. Array shape {shape} "
                                 f"doesn't match dim_order '{self.dim_order}'")
-        
+        else:
+            # C is in dim_order but might be missing from actual data
+            if ndim == len(self.dim_order) - 1:
+                # Array is missing channel dimension, add it
+                c_axis = self.dim_order.index('C')
+                self._data_array = np.expand_dims(self._data_array, axis=c_axis)
+                shape = self._data_array.shape
+
         # Verify dimension count matches
         if len(shape) != len(self.dim_order):
             raise ValueError(f"Dimension mismatch: array has {len(shape)} dims, "
                            f"dim_order '{self.dim_order}' expects {len(self.dim_order)}")
-        
+
         # Create dimension mapping
         dim_map = {dim: idx for idx, dim in enumerate(self.dim_order)}
         

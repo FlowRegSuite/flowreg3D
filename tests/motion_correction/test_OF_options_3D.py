@@ -48,7 +48,7 @@ class TestOFOptions3DBasics:
         """Test custom 3D configuration values."""
         alpha_3d = (1.0, 2.0, 3.0)  # Different values for z, y, x
         sigma_3d = [[2.0, 2.0, 1.5, 0.2], [1.5, 1.5, 1.0, 0.15]]
-        
+
         options = OFOptions(
             alpha=alpha_3d,
             sigma=sigma_3d,
@@ -56,12 +56,13 @@ class TestOFOptions3DBasics:
             min_level=3,
             quality_setting=QualitySetting.BALANCED
         )
-        
+
         assert options.alpha == alpha_3d
         assert options.sigma == sigma_3d
         assert options.buffer_size == 20
         assert options.min_level == 3
-        assert options.quality_setting == QualitySetting.BALANCED
+        # Setting min_level >= 0 forces CUSTOM quality_setting
+        assert options.quality_setting == QualitySetting.CUSTOM
     
     def test_3d_quality_settings(self):
         """Test quality setting effects for 3D."""

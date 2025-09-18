@@ -11,7 +11,7 @@ from scipy.ndimage import gaussian_filter
 
 from flowreg3d._runtime import RuntimeContext
 from flowreg3d.core.optical_flow_3d import get_displacement, imregister_wrapper
-from flowreg3d.util.image_processing_3D import normalize, apply_gaussian_filter
+import flowreg3d.util.image_processing_3D as im3d
 from flowreg3d.motion_correction.OF_options_3D import OutputFormat
 
 # Import to trigger executor registration (side effect)
@@ -211,13 +211,13 @@ class BatchMotionCorrector:
     def _preprocess_frames(self, frames: np.ndarray) -> np.ndarray:
         """Preprocess frames: normalize -> filter (MATLAB order)."""
         # First normalize
-        normalized = normalize(
+        normalized = im3d.normalize(
             frames,
             ref=None,
             channel_normalization=getattr(self.options, 'channel_normalization', 'together')
         )
         # Then filter
-        filtered = apply_gaussian_filter(
+        filtered = im3d.apply_gaussian_filter(
             normalized,
             sigma=np.asarray(self.options.sigma),
             mode='reflect',
@@ -239,9 +239,6 @@ class BatchMotionCorrector:
             'iterations': self.options.iterations,
             'a_smooth': self.options.a_smooth,
             'a_data': self.options.a_data,
-            'cc_initialization': bool(getattr(self.options, 'cc_initialization', False)),
-            'cc_hw': getattr(self.options, 'cc_hw', 256),
-            'cc_up': int(getattr(self.options, 'cc_up', 10)),
         }
 
         if w_init is not None:
@@ -273,9 +270,6 @@ class BatchMotionCorrector:
             'iterations': self.options.iterations,
             'a_smooth': self.options.a_smooth,
             'a_data': self.options.a_data,
-            'cc_initialization': bool(getattr(self.options, 'cc_initialization', False)),
-            'cc_hw': getattr(self.options, 'cc_hw', 256),
-            'cc_up': int(getattr(self.options, 'cc_up', 10)),
         }
         
         # Get interpolation method

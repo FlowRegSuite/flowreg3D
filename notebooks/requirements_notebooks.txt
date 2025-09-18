@@ -4,3 +4,6 @@ ipywidgets
 pyvista
 jupyter_rfb
 ipyvtklink
+itkwidgets
+napari[all]
+ipykernel
