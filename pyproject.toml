@@ -51,6 +51,9 @@ gpu = [
     "torch>=2.2.0",
 ]
 
+[project.scripts]
+flowreg3d = "flowreg3d.cli.main:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

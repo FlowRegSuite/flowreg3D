@@ -72,20 +72,28 @@ class TIFFFileReader3D(VideoReader3D):
         try:
             # Open with tifffile
             self._tiff_file = tifffile.TiffFile(self.file_path)
-            
+
             # Read as array - tifffile handles most formats automatically
             self._data_array = self._tiff_file.asarray()
-            
-            # Parse ImageJ metadata if available
+
+            # Parse ImageJ metadata if available and update dim_order
             if hasattr(self._tiff_file, 'imagej_metadata') and self._tiff_file.imagej_metadata:
                 ij_meta = self._tiff_file.imagej_metadata
                 self._metadata['imagej'] = ij_meta
-                
+
                 # Report detected structure
                 if 'frames' in ij_meta and 'slices' in ij_meta:
                     print(f"ImageJ hyperstack detected: {ij_meta.get('frames')} frames, "
                           f"{ij_meta.get('slices')} slices, {ij_meta.get('channels', 1)} channels")
-            
+
+                # Check if axes information is available in metadata
+                if 'axes' in ij_meta:
+                    # Use the axes order from metadata
+                    self.dim_order = ij_meta['axes']
+                elif 'frames' in ij_meta and 'slices' in ij_meta and 'channels' in ij_meta:
+                    # ImageJ hyperstack is typically in TZCYX order when written by our writer
+                    self.dim_order = 'TZCYX'
+
             # Parse dimensions based on dim_order
             self._parse_dimensions()
             

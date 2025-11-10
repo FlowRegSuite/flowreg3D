@@ -514,7 +514,7 @@ def main():
     print("=" * 60)
 
     # Fix random seed for reproducibility
-    fix_seed(seed=1, deterministic=True, verbose=True)
+    fix_seed(seed=1, deterministic=False, verbose=True)
     print()
 
     # Get the script's directory and navigate to data folder
