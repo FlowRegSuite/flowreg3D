@@ -9,22 +9,30 @@ This script:
 5. Visualizes original, displaced, and corrected volumes in napari
 """
 
+import os
 import time
 from pathlib import Path
+from typing import Optional, Tuple
 
 import napari
 import numpy as np
+import torch
 from pyflowreg.util.io.factory import get_video_file_reader
 from scipy.ndimage import zoom, gaussian_filter
 
-from flowreg3d.core.optical_flow_3d import get_displacement, imregister_wrapper
+from flowreg3d.core.optical_flow_3d import imregister_wrapper
 from flowreg3d.motion_generation.motion_generators import (get_default_3d_generator, get_low_disp_3d_generator,
                                                            get_test_3d_generator, get_high_disp_3d_generator)
 from flowreg3d.util.random import fix_seed
+from VolRAFT.models.model import ModelFactory
+from VolRAFT.utils import CheckpointController, YAMLHandler
 
 
-mode = "numba"
-# mode = "torch"
+DEFAULT_VOLRAFT_CHECKPOINT_DIR = Path(__file__).resolve().parents[1] / "VolRAFT" / "checkpoints" / \
+    "volraft_config_120" / "checkpoint_20240119_184617_980292"
+VOLRAFT_CHECKPOINT_DIR = Path(os.environ["VOLRAFT_CHECKPOINT_DIR"]).expanduser().resolve() \
+    if "VOLRAFT_CHECKPOINT_DIR" in os.environ else DEFAULT_VOLRAFT_CHECKPOINT_DIR
+mode = "volraft"
 
 
 def process_3d_stack(video_data):
@@ -248,18 +256,19 @@ def warp_volume_pc3d(volume, flow):
 
 def compute_3d_optical_flow(frame1, frame2, flow_params):
     """
-    Compute 3D optical flow between two frames.
-    Handles preprocessing internally.
+    Compute 3D optical flow between two frames using the VolRAFT backend.
+    VolRAFT expects raw data and performs its own normalization internally.
 
     Args:
         frame1: Reference frame (Z, Y, X) or (Z, Y, X, C)
         frame2: Target frame (Z, Y, X) or (Z, Y, X, C)
-        flow_params: Dictionary of flow parameters
+        flow_params: Dictionary of flow parameters (expects 'checkpoint_dir' / 'use_gpu'; optional
+                     'num_overlaps' and 'mask_percentile' mirror VolRAFT's tiling behavior)
 
     Returns:
         Flow field with shape (Z, Y, X, 3) where last dimension contains [dx, dy, dz]
     """
-    print("\nComputing 3D optical flow...")
+    print("\nComputing 3D optical flow with VolRAFT...")
     print(f"  Input shapes: {frame1.shape}, {frame2.shape}")
 
     # Ensure float32
@@ -270,31 +279,28 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
         f1 = f1[..., np.newaxis]
         f2 = f2[..., np.newaxis]
 
-    # Apply Gaussian filtering with sigma=2 in each spatial dimension
-    print("  Applying Gaussian filter (sigma=2)...")
-    for c in range(f1.shape[-1]):
-        f1[..., c] = gaussian_filter(f1[..., c], sigma=0.5)
-        f2[..., c] = gaussian_filter(f2[..., c], sigma=0.5)
+    # VolRAFT expects data in [0,1] range (from process_3d_stack) and performs its own joint normalization internally
+    # No Gaussian filtering - VolRAFT was trained on raw data without pre-filtering
+    # The model will normalize both volumes jointly using min/max across both
+    print(f"  Input range: [{f1.min():.3f}, {f1.max():.3f}] (from process_3d_stack normalization)")
+    print("  Passing to VolRAFT (model will apply joint normalization internally)")
 
-    # Normalize per channel based on frame1 statistics
-    print("  Normalizing frames...")
-    mins = f1.min(axis=(0, 1, 2), keepdims=True)
-    maxs = f1.max(axis=(0, 1, 2), keepdims=True)
-    ranges = maxs - mins
-
-    # Avoid division by zero
-    ranges = np.where(ranges > 0, ranges, 1.0)
-
-    f1_norm = (f1 - mins) / ranges
-    f2_norm = (f2 - mins) / ranges
+    checkpoint_dir = Path(flow_params.get("checkpoint_dir", VOLRAFT_CHECKPOINT_DIR))
+    use_gpu = flow_params.get("use_gpu", True)
+    num_overlaps = flow_params.get("num_overlaps", 5)
+    mask_percentile = flow_params.get("mask_percentile", 10.0)
 
     t0 = time.perf_counter()
-
-    # Call get_displacement which returns (Z, Y, X, 3) with (dx, dy, dz)
-    flow = get_displacement(f1_norm, f2_norm, **flow_params)
-
+    flow = run_volraft_inference(
+        f1,
+        f2,
+        checkpoint_dir=checkpoint_dir,
+        use_gpu=use_gpu,
+        num_overlaps=num_overlaps,
+        mask_percentile=mask_percentile,
+    )
     t_elapsed = time.perf_counter() - t0
-    print(f"  Flow computation time: {t_elapsed:.2f} seconds with numba backend.")
+    print(f"  Flow computation time: {t_elapsed:.2f} seconds with VolRAFT backend.")
 
     # Print flow statistics
     print(f"  Flow field shape: {flow.shape}")
@@ -347,6 +353,256 @@ def compute_3d_optical_flow_torch(frame1, frame2, flow_params):
     print(f"  Flow computation time: {time.time() - start:.2f} seconds with torch backend.")
 
     return flow.detach().cpu().numpy().astype(np.float64, copy=False)
+
+
+def _build_foreground_mask(volume: np.ndarray, percentile: float = 10.0) -> np.ndarray:
+    """
+    Create a simple foreground mask by thresholding the intensity distribution.
+    """
+    vol = volume.squeeze(-1)
+    if vol.size == 0:
+        return np.ones_like(vol, dtype=bool)
+
+    threshold = np.percentile(vol, percentile)
+    mask = vol > threshold
+    if not mask.any():
+        mask = vol > (vol.mean() if vol.ptp() > 0 else 0.0)
+    return mask
+
+
+def _gaussian_window_3d(shape: Tuple[int, int, int]) -> np.ndarray:
+    """
+    Generate 3D Gaussian weights on the voxel grid (matches VolRAFT's infer.py logic).
+    """
+    dz, dy, dx = map(int, shape)
+    mz, my, mx = [(s - 1.0) / 2.0 for s in (dz, dy, dx)]
+    zz, yy, xx = np.ogrid[-mz:mz + 1, -my:my + 1, -mx:mx + 1]
+    sigma = float(min(shape)) / 6.0
+    if sigma <= 0:
+        sigma = 1.0
+    window = np.exp(-(xx ** 2 + yy ** 2 + zz ** 2) / (2.0 * sigma ** 2))
+    return window.astype(np.float32, copy=False)
+
+
+def _window_starts(length: int, window: int, stride: int) -> np.ndarray:
+    """
+    Compute sliding-window start indices that guarantee coverage of the volume.
+    """
+    if length <= window:
+        return np.array([0], dtype=int)
+
+    starts = list(range(0, length - window + 1, stride))
+    last_start = length - window
+    if starts[-1] != last_start:
+        starts.append(last_start)
+    return np.array(starts, dtype=int)
+
+
+def _compute_patch_padding(volume_shape: Tuple[int, int, int],
+                           patch_shape: Tuple[int, int, int],
+                           margin_before: Tuple[int, int, int],
+                           margin_after: Tuple[int, int, int]) -> Tuple[Tuple[int, int], ...]:
+    """
+    Determine symmetric padding so every patch (including its context margins) stays within bounds.
+    """
+    padding = []
+    for dim, patch_dim, before_margin, after_margin in zip(volume_shape, patch_shape, margin_before, margin_after):
+        before = before_margin
+        after = after_margin
+        total = dim + before + after
+        if total < patch_dim:
+            deficit = patch_dim - total
+            extra_before = deficit // 2
+            before += extra_before
+            after += deficit - extra_before
+        padding.append((before, after))
+    return tuple(padding)
+
+
+def run_volraft_inference(reference_frame,
+                          moving_frame,
+                          checkpoint_dir: Path,
+                          use_gpu: bool = True,
+                          num_overlaps: int = 5,
+                          mask_percentile: Optional[float] = 10.0):
+    """
+    Run VolRAFT inference on two normalized volumes and return the flow mapping reference→moving.
+
+    Args:
+        reference_frame: Target/fixed volume (Z, Y, X[, C]).
+        moving_frame: Volume to be warped to the reference (same shape as reference_frame).
+        checkpoint_dir: Path to VolRAFT checkpoint folder.
+        use_gpu: Whether to run on GPU when available.
+        num_overlaps: Approximate number of overlapping positions per axis (stride ≈ flow_size / num_overlaps, clamped to ≥1).
+        mask_percentile: Percentile for building a simple intensity foreground mask; pass None to disable masking.
+    """
+    checkpoint_dir = checkpoint_dir.expanduser().resolve()
+    if not checkpoint_dir.exists():
+        raise FileNotFoundError(
+            f"VolRAFT checkpoint directory not found: {checkpoint_dir}. "
+            "Please place the pretrained weights or point VOLRAFT_CHECKPOINT_DIR to the correct path."
+        )
+
+    controller = CheckpointController(str(checkpoint_dir))
+    config_path = controller.find_config_file()
+    if config_path is None:
+        raise FileNotFoundError(
+            f"No configuration YAML found next to checkpoint in {checkpoint_dir}. "
+            "Ensure the VolRAFT checkpoints folder is intact."
+        )
+
+    config = YAMLHandler.read_yaml(config_path) or {}
+
+    # Read patch + flow specs directly from checkpoint so they match training
+    _, patch_shape, flow_shape, _, _, _, _, _ = controller.load_last_checkpoint(
+        network=None, optimizer=None, scheduler=None
+    )
+    if patch_shape is None or flow_shape is None:
+        raise RuntimeError("Checkpoint does not contain patch/flow shapes required for inference.")
+
+    model = ModelFactory.build_instance(
+        patch_shape=patch_shape,
+        flow_shape=flow_shape,
+        config=config,
+        ptdtype=torch.float32,
+    )
+
+    _, _, _, model, _, _, _, _ = controller.load_last_checkpoint(
+        network=model, optimizer=None, scheduler=None
+    )
+
+    device = torch.device("cuda" if use_gpu and torch.cuda.is_available() else "cpu")
+    print(f"  Using VolRAFT device: {device}")
+    model = model.to(device)
+    model.eval()
+
+    ref = reference_frame.astype(np.float32, copy=False)
+    mov = moving_frame.astype(np.float32, copy=False)
+    if ref.ndim == 3:
+        ref = ref[..., np.newaxis]
+        mov = mov[..., np.newaxis]
+    if ref.shape[-1] > 1:
+        print(f"  Averaging {ref.shape[-1]} channels for VolRAFT (expects single channel)")
+        ref = ref.mean(axis=-1, keepdims=True)
+        mov = mov.mean(axis=-1, keepdims=True)
+
+    original_shape = reference_frame.shape[:3]
+    patch_spatial = tuple(int(x) for x in patch_shape[-3:])
+    flow_spatial = tuple(int(x) for x in flow_shape[-3:])
+    margin_before = tuple(max((patch_dim - flow_dim) // 2, 0) for patch_dim, flow_dim in zip(patch_spatial, flow_spatial))
+    margin_after = tuple(max(patch_dim - flow_dim - before, 0) for patch_dim, flow_dim, before in zip(patch_spatial, flow_spatial, margin_before))
+    gaussian_window = _gaussian_window_3d(flow_spatial)
+
+    default_full_margin = tuple(max(flow_dim // 4, 2) for flow_dim in flow_spatial)
+    half_margin = tuple(min(m // 2, flow_dim // 2) for m, flow_dim in zip(default_full_margin, flow_spatial))
+
+    core_slices = []
+    for dim, hm in zip(flow_spatial, half_margin):
+        start = hm
+        end = dim - hm
+        if end <= start:
+            start = 0
+            end = dim
+        core_slices.append(slice(start, end))
+    core_slices = tuple(core_slices)
+
+    overlap_cap = max(1, min(int(num_overlaps), min(flow_spatial)))
+    stride = tuple(max(dim // overlap_cap, 1) for dim in flow_spatial)
+    print(f"  Tile stride set to {stride} voxels (~1/{overlap_cap} of flow size).")
+
+    if mask_percentile is None:
+        mask = np.ones(original_shape, dtype=bool)
+    else:
+        mask = _build_foreground_mask(ref, percentile=float(mask_percentile))
+
+    padding = _compute_patch_padding(original_shape, patch_spatial, margin_before, margin_after)
+    pad_spec = padding + ((0, 0),)
+    if any(pad_amount != (0, 0) for pad_amount in padding):
+        ref = np.pad(ref, pad_spec, mode="edge")
+        mov = np.pad(mov, pad_spec, mode="edge")
+        mask = np.pad(mask, padding, mode="constant", constant_values=False)
+        print(f"  Applied padding {padding} to preserve context margins.")
+
+    padded_shape = ref.shape[:3]
+    weight_accum = np.zeros(padded_shape, dtype=np.float32)
+    flow_accum = np.zeros(padded_shape + (3,), dtype=np.float32)
+
+    z_positions = _window_starts(original_shape[0], flow_spatial[0], stride[0])
+    y_positions = _window_starts(original_shape[1], flow_spatial[1], stride[1])
+    x_positions = _window_starts(original_shape[2], flow_spatial[2], stride[2])
+    total_tiles = len(z_positions) * len(y_positions) * len(x_positions)
+    print(f"  Running VolRAFT on {total_tiles} overlapping tiles "
+          f"(input patch {patch_spatial[0]}x{patch_spatial[1]}x{patch_spatial[2]}, "
+          f"predicted region {flow_spatial[0]}x{flow_spatial[1]}x{flow_spatial[2]}).")
+
+    processed_tiles = 0
+    gaussian_window = gaussian_window.astype(np.float32)
+    mask = mask.astype(bool, copy=False)
+    pad_offsets = [pad[0] for pad in padding]
+
+    for z0 in z_positions:
+        z_flow_start = z0 + pad_offsets[0]
+        z_flow_slice = slice(z_flow_start, z_flow_start + flow_spatial[0])
+        z_patch_slice = slice(z_flow_start - margin_before[0], z_flow_start - margin_before[0] + patch_spatial[0])
+        for y0 in y_positions:
+            y_flow_start = y0 + pad_offsets[1]
+            y_flow_slice = slice(y_flow_start, y_flow_start + flow_spatial[1])
+            y_patch_slice = slice(y_flow_start - margin_before[1], y_flow_start - margin_before[1] + patch_spatial[1])
+            for x0 in x_positions:
+                x_flow_start = x0 + pad_offsets[2]
+                x_flow_slice = slice(x_flow_start, x_flow_start + flow_spatial[2])
+                x_patch_slice = slice(x_flow_start - margin_before[2], x_flow_start - margin_before[2] + patch_spatial[2])
+
+                patch_mask = mask[z_flow_slice, y_flow_slice, x_flow_slice]
+                if not np.any(patch_mask):
+                    continue
+
+                ref_patch = np.ascontiguousarray(ref[z_patch_slice, y_patch_slice, x_patch_slice, :])
+                mov_patch = np.ascontiguousarray(mov[z_patch_slice, y_patch_slice, x_patch_slice, :])
+                ref_tensor = torch.from_numpy(np.moveaxis(ref_patch, -1, 0)[None]).to(device)
+                mov_tensor = torch.from_numpy(np.moveaxis(mov_patch, -1, 0)[None]).to(device)
+
+                with torch.no_grad():
+                    flow_pred = model.forward(ref_tensor, mov_tensor)
+                    if isinstance(flow_pred, list):
+                        flow_pred = flow_pred[-1]
+
+                flow_np_raw = flow_pred.squeeze(0).detach().cpu().numpy()
+                flow_np_raw = np.moveaxis(flow_np_raw, 0, -1).astype(np.float32, copy=False)
+
+                flow_np = np.empty_like(flow_np_raw)
+                flow_np[..., 0] = flow_np_raw[..., 2]  # dx
+                flow_np[..., 1] = flow_np_raw[..., 1]  # dy
+                flow_np[..., 2] = flow_np_raw[..., 0]  # dz
+
+                weights = np.zeros_like(patch_mask, dtype=np.float32)
+                patch_core = patch_mask[core_slices]
+                if not np.any(patch_core):
+                    continue
+                weights[core_slices] = gaussian_window[core_slices] * patch_core
+
+                flow_weighted = flow_np * weights[..., None]
+
+                flow_accum[z_flow_slice, y_flow_slice, x_flow_slice] += flow_weighted
+                weight_accum[z_flow_slice, y_flow_slice, x_flow_slice] += weights
+                processed_tiles += 1
+
+    if processed_tiles == 0:
+        raise RuntimeError("Foreground mask eliminated all patches; cannot run VolRAFT inference.")
+
+    print(f"  Processed {processed_tiles} / {total_tiles} tiles.")
+
+    valid = weight_accum > 0
+    flow_accum[valid] /= weight_accum[valid][..., None]
+    flow_accum[~valid] = 0
+
+    if any(pad != (0, 0) for pad in padding):
+        slices = tuple(slice(pad[0], pad[0] + orig) for pad, orig in zip(padding, original_shape))
+        flow_accum = flow_accum[slices]
+        mask = mask[slices]
+
+    flow_accum *= mask[..., None]
+    return flow_accum.astype(np.float32, copy=False)
 
 
 def create_displaced_frame_with_generator(video, generator_type='high_disp'):
@@ -558,7 +814,7 @@ def main():
     processed = process_3d_stack(video_3d)
 
     # Create displaced version with synthetic 3D motion
-    displaced, flow_gt = create_displaced_frame_with_generator(processed, generator_type='high_disp'
+    displaced, flow_gt = create_displaced_frame_with_generator(processed, generator_type="high_disp", # generator_type='low_disp'
         # Use high displacement with enhanced expansion
     )
 
@@ -571,35 +827,48 @@ def main():
 
     print("\nPreparing frames for motion correction...")
 
-    # Set up flow parameters for 3D optical flow
-    # get_displacement expects: alpha=(2,2,2), update_lag=10, iterations=20, min_level=0,
-    # levels=50, eta=0.8, a_smooth=0.5, a_data=0.45, const_assumption='gc', uvw=None, weight=None
-    flow_params = {'alpha': (0.25, 0.25, 0.25),  # 3D alpha values for x, y, z axes
-        'iterations': 100, 'a_data': 0.45, 'a_smooth': 1.0, 'weight': np.array([0.5, 0.5], dtype=np.float64),
-        'levels': 50, 'eta': 0.8, 'update_lag': 5, 'min_level': 5,
-        'const_assumption': 'gc',  # gradient constancy
-        'uvw': None  # Initial flow field
+    # Set up VolRAFT parameters
+    volraft_params = {
+        'checkpoint_dir': VOLRAFT_CHECKPOINT_DIR,
+        'use_gpu': True,
+        'num_overlaps': 5,
+        'mask_percentile': 10.0,
     }
 
     # Compute 3D optical flow (preprocessing is done internally)
-    if mode == "torch":
-        flow_est = compute_3d_optical_flow_torch(original_cropped, displaced, flow_params)
+    if mode == "volraft":
+        flow_field = -compute_3d_optical_flow(original_cropped, displaced, volraft_params)
+    elif mode == "torch":
+        legacy_flow_params = {
+            'alpha': (0.25, 0.25, 0.25),
+            'iterations': 100,
+            'a_data': 0.45,
+            'a_smooth': 1.0,
+            'weight': np.array([0.5, 0.5], dtype=np.float64),
+            'levels': 50,
+            'eta': 0.8,
+            'update_lag': 5,
+            'min_level': 5,
+            'const_assumption': 'gc',
+            'uvw': None,
+        }
+        flow_field = compute_3d_optical_flow_torch(original_cropped, displaced, legacy_flow_params)
     else:
-        flow_est = compute_3d_optical_flow(original_cropped, displaced, flow_params)
+        raise ValueError(f"Unsupported mode '{mode}'. Use 'volraft' (default) or 'torch'.")
 
     # Apply motion correction using imregister_wrapper (backwards warping)
     print("\nApplying motion correction...")
     # imregister_wrapper warps displaced to align with original_cropped
-    # flow_est contains (dx, dy, dz) components that map from displaced to original
-    corrected = imregister_wrapper(displaced,  # frame to warp
-        flow_est[:, :, :, 0],  # u (dx displacement)
-        flow_est[:, :, :, 1],  # v (dy displacement)
-        flow_est[:, :, :, 2],  # w (dz displacement)
-        original_cropped,  # reference for boundary conditions
+    corrected = imregister_wrapper(
+        displaced,
+        flow_field[:, :, :, 0],
+        flow_field[:, :, :, 1],
+        flow_field[:, :, :, 2],
+        original_cropped,
         interpolation_method='cubic')
 
     # Evaluate accuracy if we have ground truth
-    epe = evaluate_flow_accuracy(flow_est, flow_gt, boundary=25)
+    epe = evaluate_flow_accuracy(flow_field, flow_gt, boundary=25)
     print(f"\nEnd-Point Error (EPE): {epe:.2f} pixels")
 
     # Print correction quality metrics
@@ -614,16 +883,17 @@ def main():
     print(f"  Improvement ratio: {diff_original_displaced / diff_original_corrected:.2f}x")
 
     # Visualize in napari
-    visualize_in_napari(original_cropped, displaced, corrected, flow_est, flow_gt)
+    visualize_in_napari(original_cropped, displaced, corrected, flow_field, flow_gt)
 
     print("\n" + "=" * 60)
     print("Motion correction test complete!")
     print("=" * 60)
 
-    return original_cropped, displaced, corrected, flow_est, flow_gt
+    return original_cropped, displaced, corrected, flow_field, flow_gt
 
 
 if __name__ == "__main__":
     results = main()
     if results is not None:
-        original, displaced, corrected, flow_est, flow_gt = results
+        original, displaced, corrected, flow_field, flow_gt = results
+        print("Results are stored in 'results' for inspection.")
