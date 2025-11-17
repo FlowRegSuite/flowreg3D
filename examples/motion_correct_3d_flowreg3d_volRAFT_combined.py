@@ -666,9 +666,14 @@ def capture_perspective_gallery(
     viewer.camera.center = tuple(dim / 2 for dim in volume_shape)
 
     for idx, preset in enumerate(camera_presets[:SNAPSHOTS_PER_COMBINATION], start=1):
-        viewer.camera.elevation = preset["elevation"]
-        viewer.camera.azimuth = preset["azimuth"]
-        viewer.camera.roll = preset["roll"]
+        if {"elevation", "azimuth", "roll"} <= preset.keys():
+            viewer.camera.angles = (
+                preset["elevation"],
+                preset["azimuth"],
+                preset["roll"],
+            )
+        elif "angles" in preset:
+            viewer.camera.angles = tuple(preset["angles"])
         viewer.camera.zoom = preset["zoom"]
         screenshot = viewer.screenshot(canvas_only=True)
         filename = target_dir / f"{combination_name}_{idx:02d}_{preset['name']}.png"
