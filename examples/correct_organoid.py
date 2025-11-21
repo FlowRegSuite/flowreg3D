@@ -25,7 +25,7 @@ def main():
     
     # Setup paths
     input_file = Path("../data/xtitched_organoid_timelapse_ch0_cytosol_ch1_nuclei-1.tif")
-    output_folder = Path("../data/organoid_corrected")
+    output_folder = Path("../data/organoid_corrected_2")
     output_folder.mkdir(exist_ok=True, parents=True)
     
     if not input_file.exists():
@@ -37,13 +37,12 @@ def main():
     options = OFOptions(
         input_file=str(input_file),
         input_dim_order="TZYX",  # Specify dimension order for 4D TIFF
-        output_path=str(output_folder / "hdf5_comp_3d"),
+        output_path=str(output_folder / "ref_1"),
         output_format="TIFF",
-        alpha=(0.01, 0.01, 0.01),
+        alpha=(0.02, 0.02, 0.02),
         quality_setting="quality",
-        reference_frames=[10],
-        sigma=[[0.000001, 0.1, 0.1, 0.1]],  # 3D smoothing parameters
-        levels=50,
+        reference_frames=[0, 1, 2],
+        sigma=[[0.000001, 0.4, 0.4, 0.4]],
         iterations=100,
         eta=0.8,
         min_level=0,

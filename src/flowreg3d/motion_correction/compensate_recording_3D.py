@@ -208,12 +208,18 @@ class BatchMotionCorrector:
         # Preprocess reference (MATLAB order: normalize then filter)
         self.reference_proc = self._preprocess_frames(self.reference_raw)
 
-    def _preprocess_frames(self, frames: np.ndarray) -> np.ndarray:
-        """Preprocess frames: normalize -> filter (MATLAB order)."""
+    def _preprocess_frames(self, frames: np.ndarray, normalization_ref: Optional[np.ndarray] = None) -> np.ndarray:
+        """Preprocess frames: normalize -> filter (MATLAB order).
+
+        Args:
+            frames: Frames to preprocess
+            normalization_ref: Reference for normalization. If None, uses frames' own min/max.
+                              For consistent normalization, pass reference_raw.
+        """
         # First normalize
         normalized = im3d.normalize(
             frames,
-            ref=None,
+            ref=normalization_ref,
             channel_normalization=getattr(self.options, 'channel_normalization', 'together')
         )
         # Then filter
@@ -400,7 +406,8 @@ class BatchMotionCorrector:
                 batch = self.video_reader.read_batch()  # (T,Z,Y,X,C)
 
                 # Preprocess entire batch (normalize -> filter)
-                batch_proc = self._preprocess_frames(batch)
+                # Use reference_raw for normalization to match how reference_proc was created
+                batch_proc = self._preprocess_frames(batch, normalization_ref=self.reference_raw)
 
                 # First batch: compute w_init
                 if batch_idx == 1:
