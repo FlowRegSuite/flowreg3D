@@ -82,4 +82,5 @@ _skbuild
 *.pyd
 
 *.egg-info
-/CLAUDE.md
+CLAUDE.md
+AGENTS.md

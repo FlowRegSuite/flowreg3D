@@ -40,12 +40,12 @@ except ImportError:
     pass
 
 
-def fix_seed(seed: int = 42, deterministic: bool = True, verbose: bool = False) -> None:
+def fix_seed(seed: int = 1, deterministic: bool = False, verbose: bool = False) -> None:
     """
     Fix random seed across all available frameworks for reproducibility.
     
     Args:
-        seed: The random seed to use (default: 42)
+        seed: The random seed to use (default: 1)
         deterministic: Whether to enforce fully deterministic behavior (may impact performance)
         verbose: Whether to print which frameworks were seeded
     """
