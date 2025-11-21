@@ -13,11 +13,13 @@ import argparse
 import sys
 from pathlib import Path
 import numpy as np
-from typing import Optional, Tuple
 
 # Import the 2D reader with ScanImage support for reading flat files
 from flowreg3d.util.io.tiff import TIFFFileReader
-from flowreg3d.util.io._scanimage import parse_scanimage_metadata, format_scanimage_metadata_report
+from flowreg3d.util.io._scanimage import (
+    parse_scanimage_metadata,
+    format_scanimage_metadata_report,
+)
 
 # Import 3D writer for properly formatted output
 from flowreg3d.util.io.tiff_3d import TIFFFileWriter3D
@@ -80,11 +82,15 @@ class ReshapeTIFFReader(TIFFFileReader):
 
         n_frames = len(frame_indices)
         if n_frames == 0:
-            return np.empty((0, self.height, self.width, self.n_channels), dtype=self.dtype)
+            return np.empty(
+                (0, self.height, self.width, self.n_channels), dtype=self.dtype
+            )
 
         if self._should_use_series_reader():
             self._series_reader_used = True
-            output = np.zeros((n_frames, self.height, self.width, self.n_channels), dtype=self.dtype)
+            output = np.zeros(
+                (n_frames, self.height, self.width, self.n_channels), dtype=self.dtype
+            )
             self._read_series_mode(frame_indices, output)
             return output
 
@@ -106,8 +112,8 @@ class ReshapeTIFFReader(TIFFFileReader):
 def add_tiff_reshape_parser(subparsers):
     """Add the tiff-reshape subcommand to the CLI parser."""
     parser = subparsers.add_parser(
-        'tiff-reshape',
-        help='Convert flat TIFF files to proper 3D volumetric stacks',
+        "tiff-reshape",
+        help="Convert flat TIFF files to proper 3D volumetric stacks",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="""
 Convert flat TIFF files to proper 3D volumetric stacks.
@@ -146,117 +152,123 @@ Examples:
 
   # Dry run to check detected parameters
   %(prog)s input.tif output.tif --dry-run
-        """
+        """,
     )
 
     # Positional arguments
     parser.add_argument(
-        'input_file',
-        type=str,
-        help='Input TIFF file (flat or improperly formatted)'
+        "input_file", type=str, help="Input TIFF file (flat or improperly formatted)"
     )
 
     parser.add_argument(
-        'output_file',
+        "output_file",
         type=str,
-        help='Output TIFF file (will be properly formatted as TZYXC)'
+        help="Output TIFF file (will be properly formatted as TZYXC)",
     )
 
     # Structure specification
-    structure_group = parser.add_argument_group('Structure specification')
+    structure_group = parser.add_argument_group("Structure specification")
     structure_group.add_argument(
-        '--slices-per-volume', '-z',
+        "--slices-per-volume",
+        "-z",
         type=int,
         default=None,
-        help='Number of Z slices per volume (auto-detect if not specified)'
+        help="Number of Z slices per volume (auto-detect if not specified)",
     )
 
     structure_group.add_argument(
-        '--frames-per-slice', '-f',
+        "--frames-per-slice",
+        "-f",
         type=int,
         default=1,
-        help='Number of frames per Z slice for averaging (default: 1)'
+        help="Number of frames per Z slice for averaging (default: 1)",
     )
 
     # Volume selection
-    selection_group = parser.add_argument_group('Volume selection')
+    selection_group = parser.add_argument_group("Volume selection")
     selection_group.add_argument(
-        '--start-volume', '-s',
+        "--start-volume",
+        "-s",
         type=int,
         default=None,
-        help='First volume to extract (0-based index)'
+        help="First volume to extract (0-based index)",
     )
 
     selection_group.add_argument(
-        '--end-volume', '-e',
+        "--end-volume",
+        "-e",
         type=int,
         default=None,
-        help='Last volume to extract (exclusive, like Python slicing)'
+        help="Last volume to extract (exclusive, like Python slicing)",
     )
 
     selection_group.add_argument(
-        '--volume-stride', '--stride',
+        "--volume-stride",
+        "--stride",
         type=int,
         default=1,
-        help='Extract every Nth volume (default: 1 = all volumes)'
+        help="Extract every Nth volume (default: 1 = all volumes)",
     )
 
     # Processing options
-    processing_group = parser.add_argument_group('Processing options')
+    processing_group = parser.add_argument_group("Processing options")
     processing_group.add_argument(
-        '--channels',
+        "--channels",
         type=int,
         default=None,
-        help='Number of channels (auto-detect if not specified)'
+        help="Number of channels (auto-detect if not specified)",
     )
 
     processing_group.add_argument(
-        '--dim-order',
+        "--dim-order",
         type=str,
         default=None,
-        help='Dimension order of input file if known (e.g., TZYX, ZTYX)'
+        help="Dimension order of input file if known (e.g., TZYX, ZTYX)",
     )
 
     processing_group.add_argument(
-        '--compression',
+        "--compression",
         type=str,
-        choices=['none', 'lzw', 'zlib', 'jpeg'],
-        default='lzw',
-        help='Compression for output file (default: lzw)'
+        choices=["none", "lzw", "zlib", "jpeg"],
+        default="lzw",
+        help="Compression for output file (default: lzw)",
     )
 
     # Output options
-    output_group = parser.add_argument_group('Output options')
+    output_group = parser.add_argument_group("Output options")
     output_group.add_argument(
-        '--output-dim-order',
+        "--output-dim-order",
         type=str,
-        default='TZYXC',
-        help='Dimension order for output file (default: TZYXC)'
+        default="TZYXC",
+        help="Dimension order for output file (default: TZYXC)",
     )
 
     output_group.add_argument(
-        '--imagej',
-        action='store_true',
-        help='Write ImageJ-compatible metadata'
+        "--imagej", action="store_true", help="Write ImageJ-compatible metadata"
+    )
+
+    output_group.add_argument(
+        "--split-channels",
+        action="store_true",
+        help="Write one output file per channel (appends _ch{index} before the extension)",
     )
 
     # Utility options
     parser.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Show detected parameters without writing output'
+        "--dry-run",
+        action="store_true",
+        help="Show detected parameters without writing output",
     )
 
     parser.add_argument(
-        '--verbose', '-v',
-        action='store_true',
-        help='Show detailed progress information'
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show detailed progress information",
     )
 
     parser.add_argument(
-        '--overwrite',
-        action='store_true',
-        help='Overwrite output file if it exists'
+        "--overwrite", action="store_true", help="Overwrite output file if it exists"
     )
 
     # Set the function to call
@@ -291,21 +303,23 @@ def reshape_tiff(args):
     print("Checking for ScanImage metadata...")
     si_metadata = parse_scanimage_metadata(str(input_path))
 
-    if si_metadata.get('is_scanimage'):
+    if si_metadata.get("is_scanimage"):
         print("ScanImage file detected!")
         print(format_scanimage_metadata_report(si_metadata))
         print()
 
         # Auto-detect slices per volume if not specified
         if args.slices_per_volume is None:
-            args.slices_per_volume = si_metadata.get('slices_per_volume', 1)
+            args.slices_per_volume = si_metadata.get("slices_per_volume", 1)
             if args.slices_per_volume > 1:
                 print(f"Auto-detected {args.slices_per_volume} slices per volume")
 
         # Auto-detect frames per slice if not specified
-        if args.frames_per_slice == 1 and si_metadata.get('frames_per_slice', 1) > 1:
-            args.frames_per_slice = si_metadata['frames_per_slice']
-            print(f"Auto-detected {args.frames_per_slice} frames per slice for averaging")
+        if args.frames_per_slice == 1 and si_metadata.get("frames_per_slice", 1) > 1:
+            args.frames_per_slice = si_metadata["frames_per_slice"]
+            print(
+                f"Auto-detected {args.frames_per_slice} frames per slice for averaging"
+            )
     else:
         print("Not a ScanImage file or metadata not found")
 
@@ -316,13 +330,13 @@ def reshape_tiff(args):
         return 1
 
     # Open the input file using 2D reader
-    print(f"\nOpening input file...")
+    print("\nOpening input file...")
     try:
         reader = ReshapeTIFFReader(
             str(input_path),
             buffer_size=100,  # Smaller buffer for 3D data
             bin_size=1,  # No binning
-            deinterleave=1  # Handle deinterleaving if needed
+            deinterleave=1,  # Handle deinterleaving if needed
         )
     except Exception as e:
         print(f"Error opening input file: {e}", file=sys.stderr)
@@ -348,9 +362,9 @@ def reshape_tiff(args):
     if reader.frame_count % frames_per_volume != 0:
         print(f"\nWarning: Total frames ({reader.frame_count}) not evenly divisible by")
         print(f"         frames per volume ({frames_per_volume})")
-        print(f"         Last incomplete volume will be discarded")
+        print("         Last incomplete volume will be discarded")
 
-    print(f"\nDetected structure:")
+    print("\nDetected structure:")
     print(f"  {total_volumes} volumes")
     print(f"  {slices_per_volume} slices per volume")
     if frames_per_slice > 1:
@@ -371,7 +385,7 @@ def reshape_tiff(args):
     selected_volumes = list(range(start_vol, end_vol, stride))
     n_selected = len(selected_volumes)
 
-    print(f"\nVolume selection:")
+    print("\nVolume selection:")
     print(f"  Range: [{start_vol}, {end_vol})")
     print(f"  Stride: {stride}")
     print(f"  Selected: {n_selected} volumes")
@@ -382,7 +396,7 @@ def reshape_tiff(args):
         return 0
 
     # Process and write data
-    print(f"\nReshaping data...")
+    print("\nReshaping data...")
 
     # Create output array shape: (T, Z, Y, X, C)
     output_shape = (
@@ -390,28 +404,50 @@ def reshape_tiff(args):
         slices_per_volume,
         reader.height,
         reader.width,
-        reader.n_channels
+        reader.n_channels,
     )
 
     print(f"Output shape: {output_shape}")
 
-    # Create writer
-    writer = TIFFFileWriter3D(
-        str(output_path),
-        dim_order=args.output_dim_order
-    )
+    split_channels = bool(args.split_channels)
+    if split_channels and reader.n_channels < 2:
+        print(
+            "Split-channels requested but only 1 channel detected; writing a single output file."
+        )
+        split_channels = False
+
+    if split_channels:
+        channel_paths = [
+            output_path.with_name(f"{output_path.stem}_ch{ch}{output_path.suffix}")
+            for ch in range(reader.n_channels)
+        ]
+        print("\nChannel outputs:")
+        for ch, path in enumerate(channel_paths):
+            print(f"  Channel {ch}: {path}")
+
+        writers = [
+            TIFFFileWriter3D(str(path), dim_order=args.output_dim_order)
+            for path in channel_paths
+        ]
+    else:
+        # Create writer
+        writer = TIFFFileWriter3D(str(output_path), dim_order=args.output_dim_order)
 
     # Process each selected volume
     for vol_idx, vol_num in enumerate(selected_volumes):
         if args.verbose or (vol_idx % max(1, n_selected // 10) == 0):
-            print(f"Processing volume {vol_idx + 1}/{n_selected} (original #{vol_num})...")
+            print(
+                f"Processing volume {vol_idx + 1}/{n_selected} (original #{vol_num})..."
+            )
 
         # Calculate frame indices for this volume
         frame_start = vol_num * frames_per_volume
         frame_end = frame_start + frames_per_volume
 
         # Read all frames for this volume
-        volume_frames = reader[frame_start:frame_end]  # Shape: (frames_per_volume, H, W, C)
+        volume_frames = reader[
+            frame_start:frame_end
+        ]  # Shape: (frames_per_volume, H, W, C)
 
         # Ensure correct dtype (reader may return float64)
         if volume_frames.dtype != reader.dtype:
@@ -420,8 +456,10 @@ def reshape_tiff(args):
         # Reshape based on frames_per_slice
         if frames_per_slice > 1:
             # Average frames at each Z position
-            volume_data = np.zeros((slices_per_volume, reader.height, reader.width, reader.n_channels),
-                                  dtype=np.float32)
+            volume_data = np.zeros(
+                (slices_per_volume, reader.height, reader.width, reader.n_channels),
+                dtype=np.float32,
+            )
 
             for z in range(slices_per_volume):
                 slice_start = z * frames_per_slice
@@ -433,18 +471,40 @@ def reshape_tiff(args):
             volume_data = volume_data.astype(reader.dtype)
         else:
             # Direct reshape - frames are Z slices
-            volume_data = volume_frames.reshape(slices_per_volume, reader.height, reader.width, reader.n_channels)
+            volume_data = volume_frames.reshape(
+                slices_per_volume, reader.height, reader.width, reader.n_channels
+            )
 
-        # Write this volume (writer expects (T, Z, Y, X, C) or (Z, Y, X, C) for single)
-        writer.write_frames(volume_data)
+        if split_channels:
+            # Write each channel to its own file, preserving ZYX ordering
+            for ch_idx, ch_writer in enumerate(writers):
+                ch_writer.write_frames(volume_data[..., ch_idx : ch_idx + 1])
+        else:
+            # Write this volume (writer expects (T, Z, Y, X, C) or (Z, Y, X, C) for single)
+            writer.write_frames(volume_data)
 
     # Close files
-    writer.close()
+    if split_channels:
+        for ch_writer in writers:
+            ch_writer.close()
+    else:
+        writer.close()
     reader.close()
 
-    print(f"\nSuccess! Output written to: {output_path}")
-    print(f"Final shape: (T={n_selected}, Z={slices_per_volume}, "
-          f"Y={reader.height}, X={reader.width}, C={reader.n_channels})")
+    if split_channels:
+        print("\nSuccess! Channel outputs written:")
+        for ch, path in enumerate(channel_paths):
+            print(f"  Channel {ch}: {path}")
+        print(
+            f"Final shape per channel file: (T={n_selected}, Z={slices_per_volume}, "
+            f"Y={reader.height}, X={reader.width}, C=1)"
+        )
+    else:
+        print(f"\nSuccess! Output written to: {output_path}")
+        print(
+            f"Final shape: (T={n_selected}, Z={slices_per_volume}, "
+            f"Y={reader.height}, X={reader.width}, C={reader.n_channels})"
+        )
 
     return 0
 
@@ -456,7 +516,7 @@ def main():
     add_tiff_reshape_parser(subparsers)
 
     # Simulate tiff-reshape command
-    args = parser.parse_args(['tiff-reshape'] + sys.argv[1:])
+    args = parser.parse_args(["tiff-reshape"] + sys.argv[1:])
     return args.func(args)
 
 
