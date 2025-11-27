@@ -88,6 +88,15 @@ def _load_volume(path: Path, dim_order: Optional[str] = None) -> np.ndarray:
     # Some ImageJ exports use "I" as an index axis instead of Z; map when Z is missing.
     if axes and "Z" not in axes and "I" in axes:
         axes = axes.replace("I", "Z")
+    if axes and "Z" not in axes and "S" in axes:
+        # Some writers use S (samples) where we expect Z; map the first S to Z.
+        axes = axes.replace("S", "Z", 1)
+
+    # If axes still doesn't cover all required dims, fall back to inference.
+    required_dims = set("TZYXC")
+    if axes:
+        if not required_dims.issubset(set(axes)):
+            axes = ""
 
     if axes:
         if len(axes) != data.ndim:
@@ -322,11 +331,21 @@ def concat_tiffs(args):
                 print(f"  Channel {ch}: {path}")
 
             writers = [
-                TIFFFileWriter3D(str(path), dim_order=args.output_dim_order)
+                TIFFFileWriter3D(
+                    str(path),
+                    dim_order=args.output_dim_order,
+                    imagej=True,
+                    expected_frames=n_volumes,
+                )
                 for path in channel_paths
             ]
         else:
-            writer = TIFFFileWriter3D(str(output_path), dim_order=args.output_dim_order)
+            writer = TIFFFileWriter3D(
+                str(output_path),
+                dim_order=args.output_dim_order,
+                imagej=True,
+                expected_frames=n_volumes,
+            )
 
         if channel_suffixes:
             for idx in range(n_volumes):

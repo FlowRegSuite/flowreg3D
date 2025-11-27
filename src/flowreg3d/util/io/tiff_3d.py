@@ -208,13 +208,17 @@ class TIFFFileWriter3D(VideoWriter3D):
     Writes data in ImageJ hyperstack format for compatibility.
     """
 
+    _METADATA_PADDING = 1000
+
     def __init__(
         self,
         file_path: str,
         dim_order: str = "TZYXC",
         compression: Optional[str] = None,
         bigtiff: bool = True,
-        imagej: bool = False,
+        imagej: bool = True,
+        expected_frames: Optional[int] = None,
+        ome: bool = False,
         metadata: Optional[dict] = None,
         compression_level: int = 6,
     ):
@@ -227,6 +231,9 @@ class TIFFFileWriter3D(VideoWriter3D):
             compression: Compression type ('none', 'lzw', 'zlib', 'jpeg')
             bigtiff: Use BigTIFF format for files >4GB (default: True)
             imagej: Write ImageJ-compatible metadata (default: False)
+            expected_frames: Optional total frame count (T). If provided, metadata uses
+                this value so viewers keep the T dimension when streaming.
+            ome: Write OME-TIFF metadata (default: False)
             metadata: Additional metadata dict to include
             compression_level: Compression level for zlib (0-9)
         """
@@ -240,6 +247,8 @@ class TIFFFileWriter3D(VideoWriter3D):
         self.frames_written = 0
         self.bigtiff = bigtiff
         self.imagej = imagej
+        self.expected_frames = expected_frames
+        self.ome = ome
         self.metadata = metadata or {}
         self.compression_level = compression_level
 
@@ -259,6 +268,10 @@ class TIFFFileWriter3D(VideoWriter3D):
         # Write parameters (set up on first write)
         self._file_kwargs = {}
         self._frame_kwargs = {}
+        self._base_metadata = {"Software": "flowreg3d"}
+        self._base_metadata.update(self.metadata)
+        self._tif_writer: Optional[tifffile.TiffWriter] = None
+        self._first_write_done = False
 
         # Ensure output directory exists
         os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
@@ -289,13 +302,19 @@ class TIFFFileWriter3D(VideoWriter3D):
         self.frames_written += frames.shape[0]
 
     def _create_file(self):
-        """Initialize file for writing (like 2D version)."""
-        # Remove existing file if present
+        """Initialize file for writing."""
         if os.path.exists(self.file_path):
             os.remove(self.file_path)
 
-        # Set up write parameters (following 2D pattern)
         self._setup_write_params()
+
+        self._tif_writer = tifffile.TiffWriter(
+            self.file_path,
+            bigtiff=self.bigtiff,
+            # Always manage ImageJ metadata manually to avoid tifffile validation
+            imagej=False,
+            ome=self.ome,
+        )
 
     def _setup_write_params(self):
         """Set up parameters for writing (exactly like 2D version)."""
@@ -303,23 +322,15 @@ class TIFFFileWriter3D(VideoWriter3D):
         if compression == "zlib":
             compression = (compression, self.compression_level)
 
-        # Metadata mirrors 2D writer: Software tag and optional user metadata
-        metadata = self.metadata.copy()
-        if self._current_axes is not None:
-            metadata.update({"Software": "flowreg3d"})
-
         self._file_kwargs = {
             "bigtiff": self.bigtiff,
-            "compression": compression,
-            "metadata": metadata
-            if self._current_axes is not None
-            else {"Software": "flowreg3d"},
-            "imagej": self.imagej,
+            "imagej": False,
+            "ome": self.ome,
         }
 
         self._frame_kwargs = {
             "compression": compression,
-            "metadata": metadata if self._current_axes is not None else None,
+            "contiguous": True,
         }
 
     def _write_frames_to_file(self, frames: np.ndarray):
@@ -329,36 +340,101 @@ class TIFFFileWriter3D(VideoWriter3D):
         Args:
             frames: Array with shape (T, Z, Y, X, C)
         """
-        _, _, _, _, C = frames.shape
+        T, Z, Y, X, C = frames.shape
 
-        # Use append mode like 2D version (EXACTLY the same pattern)
-        append = self.frames_written > 0
-        with tifffile.TiffWriter(
-            self.file_path,
-            append=append,
-            bigtiff=self.bigtiff,
-            imagej=self.imagej,
-        ) as tif:
-            # Write each volume individually (like 2D writes each frame)
-            if C == 1:
-                # Single channel: (Z, Y, X, C) -> (Z, Y, X) like 2D does (T, H, W)
-                for volume in frames:
-                    volume = volume[:, :, :, 0]  # Remove channel dimension
-                    tif.write(volume, **self._frame_kwargs)
+        # Only supply metadata on the first write to avoid append errors and
+        # to let viewers recover axes. Even with imagej=False we emit an axes
+        # tag for the first write.
+        write_metadata = None
+        description = None
+        if not self._first_write_done:
+            write_metadata = self._base_metadata.copy()
+            axes_meta = "ZCYX" if C > 1 else "ZYX"
+
+            if self.imagej:
+                frames_meta = (
+                    self.expected_frames if self.expected_frames is not None else 0
+                )
+                images_meta = frames_meta * self.depth * C if frames_meta else 0
+                padding = (
+                    " " * self._METADATA_PADDING if self.expected_frames is None else ""
+                )
+                description = (
+                    "ImageJ=1.53c\n"
+                    f"images={images_meta}\n"
+                    f"channels={C}\n"
+                    f"slices={self.depth}\n"
+                    f"frames={frames_meta}\n"
+                    "hyperstack=true\n"
+                    "mode=composite\n"
+                    "loop=false\n"
+                    f"{padding}"
+                )
             else:
-                # Multi-channel: (Z, Y, X, C) like 2D does (H, W, C)
-                for volume in frames:
-                    # Write with planarconfig="contig" like 2D
-                    tif.write(
-                        volume.transpose(0, 3, 1, 2),
-                        planarconfig="contig",
-                        contiguous=True,
-                        **self._frame_kwargs,
-                    )
+                write_metadata.update({"axes": axes_meta})
+
+        # Write each volume individually (like 2D writes each frame)
+        if C == 1:
+            # Single channel: (Z, Y, X, C) -> (Z, Y, X) like 2D does (T, H, W)
+            for idx, volume in enumerate(frames):
+                volume = volume[:, :, :, 0]  # Remove channel dimension
+                md = write_metadata if idx == 0 else None
+                self._tif_writer.write(
+                    volume,
+                    metadata=md,
+                    description=description if idx == 0 else None,
+                    **self._frame_kwargs,
+                )
+        else:
+            # Multi-channel: (Z, Y, X, C) like 2D does (H, W, C)
+            for idx, volume in enumerate(frames):
+                md = write_metadata if idx == 0 else None
+                # Write with planarconfig="contig" like 2D
+                self._tif_writer.write(
+                    volume.transpose(0, 3, 1, 2),
+                    planarconfig="contig",
+                    metadata=md,
+                    description=description if idx == 0 else None,
+                    **self._frame_kwargs,
+                )
+
+        self._first_write_done = True
 
     def close(self):
         """Close the TIFF file (following 2D pattern)."""
-        # No longer keep writer open, so just print summary
+        # Close writer if open
+        if self._tif_writer is not None:
+            self._tif_writer.close()
+            self._tif_writer = None
+
+        # If we streamed without a known frame count, fix the header now
+        if (
+            self.imagej
+            and self.expected_frames is None
+            and self.frames_written > 0
+            and self.initialized
+        ):
+            try:
+                with tifffile.TiffFile(self.file_path, mode="r+") as tif:
+                    if 270 in tif.pages[0].tags:
+                        ij_str = (
+                            "ImageJ=1.53c\n"
+                            f"images={self.frames_written * self.depth * self.n_channels}\n"
+                            f"channels={self.n_channels}\n"
+                            f"slices={self.depth}\n"
+                            f"frames={self.frames_written}\n"
+                            "hyperstack=true\n"
+                            "mode=composite\n"
+                            "loop=false\n"
+                        )
+                        tif.pages[0].tags[270].overwrite(ij_str)
+                        print(
+                            f"  [Header Updated] Corrected frame count to {self.frames_written}"
+                        )
+            except Exception as exc:  # noqa: BLE001
+                print(f"  [Warning] Failed to update TIFF header: {exc}")
+
+        # Print summary
         if self.frames_written > 0:
             print(f"3D TIFF file written: {self.file_path}")
             print(f"  Volumes: {self.frames_written}")
