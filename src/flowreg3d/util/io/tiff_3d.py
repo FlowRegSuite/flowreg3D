@@ -7,11 +7,12 @@ seamless integration with the 3D motion correction pipeline.
 
 import os
 import warnings
-from typing import Union, List, Optional, Tuple
+from typing import Union, List, Optional
 import numpy as np
 
 try:
     import tifffile
+
     TIFF_SUPPORTED = True
 except ImportError:
     TIFF_SUPPORTED = False
@@ -23,19 +24,25 @@ from flowreg3d.util.io._base_3d import VideoReader3D, VideoWriter3D
 class TIFFFileReader3D(VideoReader3D):
     """
     3D TIFF reader supporting various dimension orderings.
-    
+
     Supports:
     - Standard multi-page TIFFs with volumetric data
     - ImageJ hyperstacks with metadata
     - Flexible dimension interpretation via dim_order parameter
     - Memory-mapped reading for large files
     """
-    
-    def __init__(self, file_path: str, buffer_size: int = 10, bin_size: int = 1,
-                 dim_order: str = 'TZYXC', **kwargs):
+
+    def __init__(
+        self,
+        file_path: str,
+        buffer_size: int = 10,
+        bin_size: int = 1,
+        dim_order: str = "TZYXC",
+        **kwargs,
+    ):
         """
         Initialize 3D TIFF reader.
-        
+
         Args:
             file_path: Path to TIFF file
             buffer_size: Number of volumes per batch
@@ -45,28 +52,28 @@ class TIFFFileReader3D(VideoReader3D):
         """
         if not TIFF_SUPPORTED:
             raise ImportError("tifffile library required for TIFF support")
-        
+
         super().__init__()
-        
+
         self.file_path = file_path
         self.buffer_size = buffer_size
         self.bin_size = bin_size
         self.dim_order = dim_order.upper()
-        
+
         # Validate dimension order
-        required_dims = set('TXYZ')
+        required_dims = set("TXYZ")
         if not required_dims.issubset(set(self.dim_order)):
             raise ValueError(f"dim_order must contain T, X, Y, Z. Got: {dim_order}")
-        
+
         # Internal state
         self._tiff_file = None
         self._data_array = None
         self._metadata = {}
-        
+
         # Validate file
         if not os.path.isfile(file_path):
             raise FileNotFoundError(f"TIFF file not found: {file_path}")
-    
+
     def _initialize(self):
         """Open TIFF and parse dimensions."""
         try:
@@ -77,92 +84,107 @@ class TIFFFileReader3D(VideoReader3D):
             self._data_array = self._tiff_file.asarray()
 
             # Parse ImageJ metadata if available and update dim_order
-            if hasattr(self._tiff_file, 'imagej_metadata') and self._tiff_file.imagej_metadata:
+            if (
+                hasattr(self._tiff_file, "imagej_metadata")
+                and self._tiff_file.imagej_metadata
+            ):
                 ij_meta = self._tiff_file.imagej_metadata
-                self._metadata['imagej'] = ij_meta
+                self._metadata["imagej"] = ij_meta
 
                 # Report detected structure
-                if 'frames' in ij_meta and 'slices' in ij_meta:
-                    print(f"ImageJ hyperstack detected: {ij_meta.get('frames')} frames, "
-                          f"{ij_meta.get('slices')} slices, {ij_meta.get('channels', 1)} channels")
+                if "frames" in ij_meta and "slices" in ij_meta:
+                    print(
+                        f"ImageJ hyperstack detected: {ij_meta.get('frames')} frames, "
+                        f"{ij_meta.get('slices')} slices, {ij_meta.get('channels', 1)} channels"
+                    )
 
                 # Check if axes information is available in metadata
-                if 'axes' in ij_meta:
+                if "axes" in ij_meta:
                     # Use the axes order from metadata
-                    self.dim_order = ij_meta['axes']
-                elif 'frames' in ij_meta and 'slices' in ij_meta and 'channels' in ij_meta:
+                    self.dim_order = ij_meta["axes"]
+                elif (
+                    "frames" in ij_meta
+                    and "slices" in ij_meta
+                    and "channels" in ij_meta
+                ):
                     # ImageJ hyperstack is typically in TZCYX order when written by our writer
-                    self.dim_order = 'TZCYX'
+                    self.dim_order = "TZCYX"
 
             # Parse dimensions based on dim_order
             self._parse_dimensions()
-            
+
             # Set dtype
             self.dtype = self._data_array.dtype
-            
+
         except Exception as e:
             raise IOError(f"Failed to open 3D TIFF file: {e}")
-    
+
     def _parse_dimensions(self):
         """Parse array dimensions according to dim_order."""
         shape = self._data_array.shape
         ndim = len(shape)
 
         # Handle case where C is implicit (single channel)
-        if 'C' not in self.dim_order:
+        if "C" not in self.dim_order:
             if ndim == len(self.dim_order):
                 # Dimensions match exactly, add implicit C=1
-                self.dim_order = self.dim_order + 'C'
+                self.dim_order = self.dim_order + "C"
                 self._data_array = self._data_array[..., np.newaxis]
                 shape = self._data_array.shape
             elif ndim == len(self.dim_order) + 1:
                 # Has channel dimension, update dim_order
-                self.dim_order = self.dim_order + 'C'
+                self.dim_order = self.dim_order + "C"
             else:
-                raise ValueError(f"Cannot parse dimensions. Array shape {shape} "
-                                f"doesn't match dim_order '{self.dim_order}'")
+                raise ValueError(
+                    f"Cannot parse dimensions. Array shape {shape} "
+                    f"doesn't match dim_order '{self.dim_order}'"
+                )
         else:
             # C is in dim_order but might be missing from actual data
             if ndim == len(self.dim_order) - 1:
                 # Array is missing channel dimension, add it
-                c_axis = self.dim_order.index('C')
+                c_axis = self.dim_order.index("C")
                 self._data_array = np.expand_dims(self._data_array, axis=c_axis)
                 shape = self._data_array.shape
 
         # Verify dimension count matches
         if len(shape) != len(self.dim_order):
-            raise ValueError(f"Dimension mismatch: array has {len(shape)} dims, "
-                           f"dim_order '{self.dim_order}' expects {len(self.dim_order)}")
+            raise ValueError(
+                f"Dimension mismatch: array has {len(shape)} dims, "
+                f"dim_order '{self.dim_order}' expects {len(self.dim_order)}"
+            )
 
         # Create dimension mapping
         dim_map = {dim: idx for idx, dim in enumerate(self.dim_order)}
-        
+
         # Extract dimensions
-        self.frame_count = shape[dim_map['T']]
-        self.depth = shape[dim_map['Z']]
-        self.height = shape[dim_map['Y']]
-        self.width = shape[dim_map['X']]
-        self.n_channels = shape[dim_map['C']] if 'C' in dim_map else 1
-        
+        self.frame_count = shape[dim_map["T"]]
+        self.depth = shape[dim_map["Z"]]
+        self.height = shape[dim_map["Y"]]
+        self.width = shape[dim_map["X"]]
+        self.n_channels = shape[dim_map["C"]] if "C" in dim_map else 1
+
         # Transpose to standard TZYXC order if needed
-        target_order = 'TZYXC'
+        target_order = "TZYXC"
         if self.dim_order != target_order:
             # Build transpose indices
             transpose_idx = []
             for dim in target_order:
                 if dim in dim_map:
                     transpose_idx.append(dim_map[dim])
-            
+
             self._data_array = np.transpose(self._data_array, transpose_idx)
             self.dim_order = target_order
-        
-        print(f"Parsed 3D TIFF: T={self.frame_count}, Z={self.depth}, "
-              f"Y={self.height}, X={self.width}, C={self.n_channels}")
-    
+
+        print(
+            f"Parsed 3D TIFF: T={self.frame_count}, Z={self.depth}, "
+            f"Y={self.height}, X={self.width}, C={self.n_channels}"
+        )
+
     def _read_raw_frames(self, frame_indices: Union[slice, List[int]]) -> np.ndarray:
         """
         Read specified timepoints.
-        
+
         Returns:
             Array with shape (T, Z, Y, X, C)
         """
@@ -170,7 +192,7 @@ class TIFFFileReader3D(VideoReader3D):
             return self._data_array[frame_indices].copy()
         else:  # List of indices
             return self._data_array[frame_indices].copy()
-    
+
     def close(self):
         """Close TIFF file."""
         if self._tiff_file is not None:
@@ -182,76 +204,141 @@ class TIFFFileReader3D(VideoReader3D):
 class TIFFFileWriter3D(VideoWriter3D):
     """
     3D TIFF writer for volumetric time series.
-    
+
     Writes data in ImageJ hyperstack format for compatibility.
     """
-    
-    def __init__(self, file_path: str, dim_order: str = 'TZYXC'):
+
+    def __init__(
+        self,
+        file_path: str,
+        dim_order: str = "TZYXC",
+        compression: Optional[str] = None,
+        bigtiff: bool = True,
+    ):
         """
         Initialize 3D TIFF writer.
-        
+
         Args:
             file_path: Output file path
             dim_order: Dimension ordering for output (default: 'TZYXC')
+            compression: Compression type ('none', 'lzw', 'zlib', 'jpeg')
+            bigtiff: Use BigTIFF format for files >4GB (default: True)
         """
         if not TIFF_SUPPORTED:
             raise ImportError("tifffile library required for TIFF support")
-        
+
         super().__init__()
-        
+
         self.file_path = file_path
         self.dim_order = dim_order.upper()
         self.frames_written = 0
-        self._frames = []
-        
+        self.bigtiff = bigtiff
+
+        # Compression mapping
+        compression_map = {
+            "none": None,
+            "lzw": "lzw",
+            "zlib": "zlib",
+            "deflate": "zlib",
+            "jpeg": "jpeg",
+        }
+        self.compression = compression_map.get(
+            compression.lower() if compression else "none", None
+        )
+
+        # TiffWriter instance
+        self._tiff_writer = None
+
+        # Metadata for ImageJ compatibility
+        self._metadata = {}
+
         # Ensure output directory exists
         os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
-    
+
     def write_frames(self, frames: np.ndarray):
         """
         Write volumes to file.
-        
+
         Args:
             frames: Array with shape (T, Z, Y, X, C) or (Z, Y, X, C) for single volume
         """
         if frames.ndim == 4:  # Single volume
             frames = frames[np.newaxis, ...]  # Add time dimension
-        
+
         if frames.ndim != 5:
             raise ValueError(f"Expected 4D or 5D array, got {frames.ndim}D")
-        
+
         # Initialize on first write
         if not self.initialized:
             self.init(frames)
-        
-        self._frames.append(frames)
+            self._create_writer()
+
+        # Write frames to disk
+        self._write_frames_to_file(frames)
         self.frames_written += frames.shape[0]
-    
-    def close(self):
-        """Write accumulated frames and close file."""
-        if self._frames:
-            # Concatenate all frames
-            all_frames = np.concatenate(self._frames, axis=0)  # (T,Z,Y,X,C)
-            T, Z, Y, X, C = all_frames.shape
 
-            # Transpose to canonical ImageJ order (T,Z,C,Y,X)
-            tzcyx = all_frames.transpose(0, 1, 4, 2, 3)  # (T,Z,Y,X,C) -> (T,Z,C,Y,X)
+    def _create_writer(self):
+        """Create TiffWriter for writing."""
+        # Remove existing file if present
+        if os.path.exists(self.file_path):
+            os.remove(self.file_path)
 
-            # Write with ImageJ metadata
-            # tifffile will handle the internal flattening to pages
-            tifffile.imwrite(
-                self.file_path,
-                tzcyx,
-                imagej=True,
-                metadata={'axes': 'TZCYX', 'frames': T, 'slices': Z, 'channels': C}
+        # Prepare ImageJ metadata
+        self._metadata = {
+            "axes": "TZCYX",
+            "frames": 0,  # Will be updated as we write
+            "slices": self.depth,
+            "channels": self.n_channels,
+        }
+
+        # Create TiffWriter instance
+        self._tiff_writer = tifffile.TiffWriter(
+            self.file_path, bigtiff=self.bigtiff, imagej=True
+        )
+
+    def _write_frames_to_file(self, frames: np.ndarray):
+        """
+        Write frame data to TIFF file.
+
+        Args:
+            frames: Array with shape (T, Z, Y, X, C)
+        """
+        T, Z, Y, X, C = frames.shape
+
+        # Transpose to ImageJ order (T, Z, C, Y, X)
+        tzcyx = frames.transpose(0, 1, 4, 2, 3)  # (T,Z,Y,X,C) -> (T,Z,C,Y,X)
+
+        # Write each timepoint (Z-stack)
+        for t in range(T):
+            volume = tzcyx[t]  # (Z, C, Y, X)
+
+            # Write the volume
+            # For ImageJ hyperstacks, we write Z slices with C channels
+            # tifffile expects shape (Z, C, Y, X) for multi-channel Z-stacks
+            self._tiff_writer.write(
+                volume,
+                compression=self.compression,
+                metadata=self._metadata
+                if t == 0 and self.frames_written == 0
+                else None,
+                contiguous=True,
             )
 
-            print(f"Wrote 3D TIFF: {self.file_path} (T={T}, Z={Z}, Y={Y}, X={X}, C={C})")
+    def close(self):
+        """Close the TIFF writer and finalize file."""
+        if self._tiff_writer is not None:
+            self._tiff_writer.close()
+            self._tiff_writer = None
 
-        self._frames = []
-    
+            if self.frames_written > 0:
+                print(
+                    f"Wrote 3D TIFF: {self.file_path} "
+                    f"(T={self.frames_written}, Z={self.depth}, "
+                    f"Y={self.height}, X={self.width}, C={self.n_channels})"
+                )
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()

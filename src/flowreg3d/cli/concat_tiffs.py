@@ -22,6 +22,45 @@ def _discover_files(folder: Path, pattern: str) -> List[Path]:
     return sorted(path for path in folder.glob(pattern) if path.is_file())
 
 
+def _strip_suffix(name: str, suffix: str) -> Optional[str]:
+    """Remove suffix from name if present; return None when it does not match."""
+    return name[: -len(suffix)] if suffix and name.endswith(suffix) else None
+
+
+def _discover_channel_files(folder: Path, suffixes: List[str]) -> List[List[Path]]:
+    """Return matched file lists per channel suffix, validating alignment."""
+    channel_lists: List[List[Path]] = []
+
+    for suffix in suffixes:
+        matched = sorted(path for path in folder.glob(f"*{suffix}") if path.is_file())
+        if not matched:
+            raise ValueError(f"No files found matching '*{suffix}' in {folder}")
+        channel_lists.append(matched)
+
+    lengths = {len(lst) for lst in channel_lists}
+    if len(lengths) != 1:
+        raise ValueError(
+            f"Channel counts differ across suffixes: {[len(lst) for lst in channel_lists]}"
+        )
+
+    n_items = lengths.pop()
+    for idx in range(n_items):
+        bases = []
+        for suffix, paths in zip(suffixes, channel_lists):
+            base = _strip_suffix(paths[idx].name, suffix)
+            if base is None:
+                raise ValueError(
+                    f"File name '{paths[idx].name}' does not end with expected suffix '{suffix}'"
+                )
+            bases.append(base)
+        if not all(b == bases[0] for b in bases):
+            raise ValueError(
+                f"File mismatch at index {idx}: {[paths[idx].name for paths in channel_lists]}"
+            )
+
+    return channel_lists
+
+
 def _load_volume(path: Path, dim_order: Optional[str] = None) -> np.ndarray:
     """
     Load a single 3D volume (one timepoint) and normalize to TZYXC.
@@ -45,6 +84,10 @@ def _load_volume(path: Path, dim_order: Optional[str] = None) -> np.ndarray:
 
     data = np.asarray(data)
     axes = axes.upper() if axes else ""
+
+    # Some ImageJ exports use "I" as an index axis instead of Z; map when Z is missing.
+    if axes and "Z" not in axes and "I" in axes:
+        axes = axes.replace("I", "Z")
 
     if axes:
         if len(axes) != data.ndim:
@@ -141,6 +184,16 @@ Examples:
     )
 
     parser.add_argument(
+        "--channel-suffixes",
+        nargs="+",
+        default=None,
+        help=(
+            "Treat each suffix as a distinct channel and align files by shared basename, "
+            "e.g., --channel-suffixes _ch1.tiff _ch2.tif"
+        ),
+    )
+
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show detected files and shapes without writing output",
@@ -166,6 +219,12 @@ Examples:
         help="Dimension order for output file (default: TZYXC)",
     )
 
+    parser.add_argument(
+        "--split-channels",
+        action="store_true",
+        help="Write one output file per channel (appends _ch{index} before the extension)",
+    )
+
     parser.set_defaults(func=concat_tiffs)
 
     return parser
@@ -181,67 +240,170 @@ def concat_tiffs(args):
         )
         return 1
 
+    channel_suffixes = getattr(args, "channel_suffixes", None)
     output_path = Path(args.output_file)
     if output_path.exists() and not args.overwrite and not args.dry_run:
         print(f"Error: Output file exists: {output_path}", file=sys.stderr)
         print("Use --overwrite to replace it", file=sys.stderr)
         return 1
 
-    files = _discover_files(input_dir, args.pattern)
-    if not files:
-        print(
-            f"Error: No files found in {input_dir} matching pattern '{args.pattern}'",
-            file=sys.stderr,
-        )
-        return 1
-
-    print(f"Found {len(files)} files to concatenate.")
-    if args.verbose:
-        for idx, path in enumerate(files):
-            print(f"  [{idx:03d}] {path.name}")
-
-    first_volume = _load_volume(files[0], args.dim_order)
-    zyx_shape = first_volume.shape[1:]
-    dtype = first_volume.dtype
-
-    print(
-        f"Detected volume shape per file: (Z={zyx_shape[0]}, Y={zyx_shape[1]}, X={zyx_shape[2]}, C={zyx_shape[3]})"
-    )
-    print(f"Data type: {dtype}")
-
-    if args.dry_run:
-        print("\nDry run - no output written")
-        return 0
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    writer = TIFFFileWriter3D(str(output_path), dim_order=args.output_dim_order)
-
     try:
-        for idx, path in enumerate(files):
+        if channel_suffixes:
+            channel_suffixes = list(channel_suffixes)
+            channel_files = _discover_channel_files(input_dir, channel_suffixes)
+            n_volumes = len(channel_files[0])
+
+            first_volumes = [
+                _load_volume(paths[0], args.dim_order) for paths in channel_files
+            ]
+            zyx_shape = first_volumes[0].shape[1:]
+            dtype = first_volumes[0].dtype
+            total_channels = sum(vol.shape[-1] for vol in first_volumes)
+
+            for vol in first_volumes[1:]:
+                if vol.shape[1:] != zyx_shape:
+                    raise ValueError("Channel volumes have mismatched shapes.")
+                dtype = np.promote_types(dtype, vol.dtype)
+
+            print(
+                f"Found {n_volumes} volume pairs across {len(channel_suffixes)} channels."
+            )
+            print(
+                f"Detected per-file shape: (Z={zyx_shape[0]}, Y={zyx_shape[1]}, X={zyx_shape[2]}, C_total={total_channels})"
+            )
+
             if args.verbose:
-                print(f"Reading {path.name}...")
-
-            volume = _load_volume(path, args.dim_order)
-
-            if volume.shape[1:] != zyx_shape:
-                raise ValueError(
-                    f"Shape mismatch for {path.name}: expected {zyx_shape}, got {volume.shape[1:]}"
+                for idx in range(n_volumes):
+                    names = [paths[idx].name for paths in channel_files]
+                    print(f"  [{idx:03d}] {', '.join(names)}")
+        else:
+            files = _discover_files(input_dir, args.pattern)
+            if not files:
+                print(
+                    f"Error: No files found in {input_dir} matching pattern '{args.pattern}'",
+                    file=sys.stderr,
                 )
+                return 1
 
-            if volume.dtype != dtype:
-                volume = volume.astype(dtype)
+            first_volume = _load_volume(files[0], args.dim_order)
+            zyx_shape = first_volume.shape[1:]
+            dtype = first_volume.dtype
+            total_channels = zyx_shape[3]
+            n_volumes = len(files)
 
-            writer.write_frames(volume)
-
+            print(f"Found {n_volumes} files to concatenate.")
             if args.verbose:
-                print(f"Appended volume {idx + 1}/{len(files)}")
-    finally:
-        writer.close()
+                for idx, path in enumerate(files):
+                    print(f"  [{idx:03d}] {path.name}")
 
-    print(f"\nSuccess! Output written to: {output_path}")
-    print(
-        f"Final shape: (T={len(files)}, Z={zyx_shape[0]}, "
-        f"Y={zyx_shape[1]}, X={zyx_shape[2]}, C={zyx_shape[3]})"
-    )
+        print(f"Data type: {dtype}")
+
+        if args.dry_run:
+            print("\nDry run - no output written")
+            return 0
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Handle split-channels option
+        split_channels = bool(getattr(args, "split_channels", False))
+        if split_channels and total_channels < 2:
+            print(
+                "Split-channels requested but only 1 channel detected; writing a single output file."
+            )
+            split_channels = False
+
+        if split_channels:
+            channel_paths = [
+                output_path.with_name(f"{output_path.stem}_ch{ch}{output_path.suffix}")
+                for ch in range(total_channels)
+            ]
+            print("\nChannel outputs:")
+            for ch, path in enumerate(channel_paths):
+                print(f"  Channel {ch}: {path}")
+
+            writers = [
+                TIFFFileWriter3D(str(path), dim_order=args.output_dim_order)
+                for path in channel_paths
+            ]
+        else:
+            writer = TIFFFileWriter3D(str(output_path), dim_order=args.output_dim_order)
+
+        if channel_suffixes:
+            for idx in range(n_volumes):
+                if args.verbose:
+                    names = [paths[idx].name for paths in channel_files]
+                    print(f"Reading {', '.join(names)}...")
+
+                vols = []
+                for paths in channel_files:
+                    vol = _load_volume(paths[idx], args.dim_order)
+                    if vol.shape[1:] != zyx_shape:
+                        raise ValueError(
+                            f"Shape mismatch for {paths[idx].name}: expected {zyx_shape}, got {vol.shape[1:]}"
+                        )
+                    if vol.dtype != dtype:
+                        vol = vol.astype(dtype)
+                    vols.append(vol)
+
+                combined = np.concatenate(vols, axis=-1)
+
+                if split_channels:
+                    # Write each channel to its own file
+                    for ch_idx, ch_writer in enumerate(writers):
+                        ch_writer.write_frames(combined[..., ch_idx : ch_idx + 1])
+                else:
+                    writer.write_frames(combined)
+
+                if args.verbose:
+                    print(f"Appended volume {idx + 1}/{n_volumes}")
+        else:
+            for idx, path in enumerate(files):
+                if args.verbose:
+                    print(f"Reading {path.name}...")
+
+                volume = _load_volume(path, args.dim_order)
+
+                if volume.shape[1:] != zyx_shape:
+                    raise ValueError(
+                        f"Shape mismatch for {path.name}: expected {zyx_shape}, got {volume.shape[1:]}"
+                    )
+
+                if volume.dtype != dtype:
+                    volume = volume.astype(dtype)
+
+                if split_channels:
+                    # Write each channel to its own file
+                    for ch_idx, ch_writer in enumerate(writers):
+                        ch_writer.write_frames(volume[..., ch_idx : ch_idx + 1])
+                else:
+                    writer.write_frames(volume)
+
+                if args.verbose:
+                    print(f"Appended volume {idx + 1}/{n_volumes}")
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        # Close writer(s) if they exist
+        if "writers" in locals():
+            for ch_writer in writers:
+                ch_writer.close()
+        elif "writer" in locals():
+            writer.close()
+
+    if split_channels:
+        print("\nSuccess! Channel outputs written:")
+        for ch, path in enumerate(channel_paths):
+            print(f"  Channel {ch}: {path}")
+        print(
+            f"Final shape per channel file: (T={n_volumes}, Z={zyx_shape[0]}, "
+            f"Y={zyx_shape[1]}, X={zyx_shape[2]}, C=1)"
+        )
+    else:
+        print(f"\nSuccess! Output written to: {output_path}")
+        print(
+            f"Final shape: (T={n_volumes}, Z={zyx_shape[0]}, "
+            f"Y={zyx_shape[1]}, X={zyx_shape[2]}, C={total_channels})"
+        )
 
     return 0
