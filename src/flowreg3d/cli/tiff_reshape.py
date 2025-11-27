@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 import numpy as np
 
+from flowreg3d.util.resize_util_3D import imresize_fused_gauss_cubic3D
+
 # Import the 2D reader with ScanImage support for reading flat files
 from flowreg3d.util.io.tiff import TIFFFileReader
 from flowreg3d.util.io._scanimage import (
@@ -107,6 +109,40 @@ class ReshapeTIFFReader(TIFFFileReader):
 
     def prefers_series_reader(self) -> bool:
         return self._should_use_series_reader()
+
+
+def _parse_scale(scale_values):
+    """Validate and normalize per-axis scale factors (X, Y, Z order)."""
+    if scale_values is None:
+        return None
+    if len(scale_values) != 3:
+        raise ValueError("Scale must be three floats: sx sy sz (X, Y, Z order)")
+    sx, sy, sz = map(float, scale_values)
+    if sx <= 0 or sy <= 0 or sz <= 0:
+        raise ValueError("Scale values must be positive")
+    return sx, sy, sz
+
+
+def _target_shape(zyx_shape, scale):
+    """Return (Z, Y, X, C) after scaling."""
+    if scale is None:
+        return zyx_shape
+    z, y, x, c = zyx_shape
+    sx, sy, sz = scale
+    return (
+        max(1, int(round(z * sz))),
+        max(1, int(round(y * sy))),
+        max(1, int(round(x * sx))),
+        c,
+    )
+
+
+def _resize_volume(volume, scale, target_zyx):
+    """Resize a volume shaped (Z, Y, X, C) using fused pyramid resize."""
+    if scale is None:
+        return volume
+    target_z, target_y, target_x = target_zyx[:3]
+    return imresize_fused_gauss_cubic3D(volume, (target_z, target_y, target_x))
 
 
 def add_tiff_reshape_parser(subparsers):
@@ -227,6 +263,15 @@ Examples:
     )
 
     processing_group.add_argument(
+        "--scale",
+        nargs=3,
+        type=float,
+        metavar=("SX", "SY", "SZ"),
+        default=None,
+        help="Scale factors for X, Y, Z axes (e.g., 0.25 0.25 1.0) before writing",
+    )
+
+    processing_group.add_argument(
         "--compression",
         type=str,
         choices=["none", "lzw", "zlib", "jpeg"],
@@ -290,6 +335,12 @@ def reshape_tiff(args):
     if output_path.exists() and not args.overwrite and not args.dry_run:
         print(f"Error: Output file exists: {output_path}", file=sys.stderr)
         print("Use --overwrite to replace it", file=sys.stderr)
+        return 1
+
+    try:
+        scale = _parse_scale(args.scale)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
     # Create output directory if needed
@@ -371,6 +422,17 @@ def reshape_tiff(args):
         print(f"  {frames_per_slice} frames per slice (will be averaged)")
     print(f"  {reader.height} x {reader.width} pixels")
     print(f"  {reader.n_channels} channel(s)")
+    base_zyx = (slices_per_volume, reader.height, reader.width, reader.n_channels)
+    target_zyx = _target_shape(base_zyx, scale)
+    if scale is not None:
+        print(
+            f"  Scaling (X, Y, Z): {scale} -> output per volume "
+            f"(Z={target_zyx[0]}, Y={target_zyx[1]}, X={target_zyx[2]})"
+        )
+    else:
+        print(
+            f"  Output per volume: (Z={target_zyx[0]}, Y={target_zyx[1]}, X={target_zyx[2]})"
+        )
 
     # Apply volume selection
     start_vol = args.start_volume if args.start_volume is not None else 0
@@ -401,9 +463,9 @@ def reshape_tiff(args):
     # Create output array shape: (T, Z, Y, X, C)
     output_shape = (
         n_selected,
-        slices_per_volume,
-        reader.height,
-        reader.width,
+        target_zyx[0],
+        target_zyx[1],
+        target_zyx[2],
         reader.n_channels,
     )
 
@@ -475,6 +537,8 @@ def reshape_tiff(args):
                 slices_per_volume, reader.height, reader.width, reader.n_channels
             )
 
+        volume_data = _resize_volume(volume_data, scale, target_zyx)
+
         if split_channels:
             # Write each channel to its own file, preserving ZYX ordering
             for ch_idx, ch_writer in enumerate(writers):
@@ -496,14 +560,14 @@ def reshape_tiff(args):
         for ch, path in enumerate(channel_paths):
             print(f"  Channel {ch}: {path}")
         print(
-            f"Final shape per channel file: (T={n_selected}, Z={slices_per_volume}, "
-            f"Y={reader.height}, X={reader.width}, C=1)"
+            f"Final shape per channel file: (T={n_selected}, Z={target_zyx[0]}, "
+            f"Y={target_zyx[1]}, X={target_zyx[2]}, C=1)"
         )
     else:
         print(f"\nSuccess! Output written to: {output_path}")
         print(
-            f"Final shape: (T={n_selected}, Z={slices_per_volume}, "
-            f"Y={reader.height}, X={reader.width}, C={reader.n_channels})"
+            f"Final shape: (T={n_selected}, Z={target_zyx[0]}, "
+            f"Y={target_zyx[1]}, X={target_zyx[2]}, C={reader.n_channels})"
         )
 
     return 0

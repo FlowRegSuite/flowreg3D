@@ -15,6 +15,7 @@ import numpy as np
 import tifffile
 
 from flowreg3d.util.io.tiff_3d import TIFFFileWriter3D
+from flowreg3d.util.resize_util_3D import imresize_fused_gauss_cubic3D
 
 
 def _discover_files(folder: Path, pattern: str) -> List[Path]:
@@ -139,6 +140,41 @@ def _load_volume(path: Path, dim_order: Optional[str] = None) -> np.ndarray:
     return volume
 
 
+def _parse_scale(scale_values: Optional[List[float]]) -> Optional[tuple]:
+    """Validate and normalize per-axis scale factors (X, Y, Z order)."""
+    if scale_values is None:
+        return None
+    if len(scale_values) != 3:
+        raise ValueError("Scale must be three floats: sx sy sz (X, Y, Z order)")
+    sx, sy, sz = scale_values
+    if sx <= 0 or sy <= 0 or sz <= 0:
+        raise ValueError("Scale values must be positive")
+    return float(sx), float(sy), float(sz)
+
+
+def _target_shape(zyx_shape: tuple, scale: Optional[tuple]) -> tuple:
+    """Return (Z, Y, X, C) after scaling."""
+    if scale is None:
+        return zyx_shape
+    z, y, x, c = zyx_shape
+    sx, sy, sz = scale
+    return (
+        max(1, int(round(z * sz))),
+        max(1, int(round(y * sy))),
+        max(1, int(round(x * sx))),
+        c,
+    )
+
+
+def _resize_volume(volume: np.ndarray, scale: Optional[tuple], target_zyx: tuple):
+    """Resize a single timepoint volume shaped (1, Z, Y, X, C) using fused pyramid resize."""
+    if scale is None:
+        return volume
+    target_z, target_y, target_x = target_zyx[:3]
+    resized = imresize_fused_gauss_cubic3D(volume[0], (target_z, target_y, target_x))
+    return resized[np.newaxis, ...]
+
+
 def add_concat_tiffs_parser(subparsers):
     """Add the concat-tiffs subcommand to the CLI parser."""
     parser = subparsers.add_parser(
@@ -234,6 +270,18 @@ Examples:
         help="Write one output file per channel (appends _ch{index} before the extension)",
     )
 
+    parser.add_argument(
+        "--scale",
+        nargs=3,
+        type=float,
+        metavar=("SX", "SY", "SZ"),
+        default=None,
+        help=(
+            "Scale factors for X, Y, Z axes (e.g., 0.25 0.25 1.0) applied to each volume "
+            "using the fused pyramid resize"
+        ),
+    )
+
     parser.set_defaults(func=concat_tiffs)
 
     return parser
@@ -254,6 +302,12 @@ def concat_tiffs(args):
     if output_path.exists() and not args.overwrite and not args.dry_run:
         print(f"Error: Output file exists: {output_path}", file=sys.stderr)
         print("Use --overwrite to replace it", file=sys.stderr)
+        return 1
+
+    try:
+        scale = _parse_scale(args.scale)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
     try:
@@ -306,6 +360,15 @@ def concat_tiffs(args):
                     print(f"  [{idx:03d}] {path.name}")
 
         print(f"Data type: {dtype}")
+
+        base_zyx = (zyx_shape[0], zyx_shape[1], zyx_shape[2], total_channels)
+        target_zyx = _target_shape(base_zyx, scale)
+        print(
+            f"Output per-volume shape: (Z={target_zyx[0]}, Y={target_zyx[1]}, "
+            f"X={target_zyx[2]}, C={target_zyx[3]})"
+        )
+        if scale is not None:
+            print(f"Scale factors (X, Y, Z): {scale}")
 
         if args.dry_run:
             print("\nDry run - no output written")
@@ -365,6 +428,7 @@ def concat_tiffs(args):
                     vols.append(vol)
 
                 combined = np.concatenate(vols, axis=-1)
+                combined = _resize_volume(combined, scale, target_zyx)
 
                 if split_channels:
                     # Write each channel to its own file
@@ -389,6 +453,8 @@ def concat_tiffs(args):
 
                 if volume.dtype != dtype:
                     volume = volume.astype(dtype)
+
+                volume = _resize_volume(volume, scale, target_zyx)
 
                 if split_channels:
                     # Write each channel to its own file
@@ -415,14 +481,14 @@ def concat_tiffs(args):
         for ch, path in enumerate(channel_paths):
             print(f"  Channel {ch}: {path}")
         print(
-            f"Final shape per channel file: (T={n_volumes}, Z={zyx_shape[0]}, "
-            f"Y={zyx_shape[1]}, X={zyx_shape[2]}, C=1)"
+            f"Final shape per channel file: (T={n_volumes}, Z={target_zyx[0]}, "
+            f"Y={target_zyx[1]}, X={target_zyx[2]}, C=1)"
         )
     else:
         print(f"\nSuccess! Output written to: {output_path}")
         print(
-            f"Final shape: (T={n_volumes}, Z={zyx_shape[0]}, "
-            f"Y={zyx_shape[1]}, X={zyx_shape[2]}, C={total_channels})"
+            f"Final shape: (T={n_volumes}, Z={target_zyx[0]}, "
+            f"Y={target_zyx[1]}, X={target_zyx[2]}, C={target_zyx[3]})"
         )
 
     return 0
