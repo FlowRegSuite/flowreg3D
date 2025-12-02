@@ -96,6 +96,7 @@ def test_concat_tiffs_parser():
     assert args.input_folder == "/input"
     assert args.output_file == "/output.tif"
     assert args.pattern == "*.tif*"
+    assert args.scale is None
 
     args = parser.parse_args(
         [
@@ -105,9 +106,14 @@ def test_concat_tiffs_parser():
             "--channel-suffixes",
             "_ch1.tif",
             "_ch2.tif",
+            "--scale",
+            "0.5",
+            "0.5",
+            "1",
         ]
     )
     assert args.channel_suffixes == ["_ch1.tif", "_ch2.tif"]
+    assert args.scale == [0.5, 0.5, 1.0]
 
 
 def test_concat_tiffs_multichannel_suffixes():
@@ -155,3 +161,50 @@ def test_concat_tiffs_multichannel_suffixes():
         np.testing.assert_array_equal(
             stacked[0, ..., 1], np.full(volume_shape[:-1], 10, dtype=np.uint8)
         )
+
+
+def test_concat_tiffs_with_scale():
+    """Apply scaling to volumes before concatenation."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_dir = Path(tmpdir) / "frames"
+        input_dir.mkdir()
+        output_path = Path(tmpdir) / "movie_scaled.tif"
+
+        n_volumes = 2
+        volume_shape = (4, 8, 8, 1)  # Z, Y, X, C
+        scale = [0.5, 0.5, 1.0]  # X, Y, Z order
+        expected_shape = (
+            n_volumes,
+            int(round(volume_shape[0] * scale[2])),
+            int(round(volume_shape[1] * scale[1])),
+            int(round(volume_shape[2] * scale[0])),
+            1,
+        )
+
+        for idx in range(n_volumes):
+            vol = np.full(volume_shape, idx + 1, dtype=np.uint8)
+            _write_volume(input_dir / f"frame_{idx:03d}.tif", vol)
+
+        args = argparse.Namespace(
+            input_folder=str(input_dir),
+            output_file=str(output_path),
+            pattern="*.tif",
+            dim_order=None,
+            scale=scale,
+            dry_run=False,
+            verbose=False,
+            overwrite=True,
+            output_dim_order="TZYXC",
+        )
+
+        result = concat_tiffs(args)
+        assert result == 0
+
+        reader = TIFFFileReader3D(str(output_path))
+        stacked = reader[:]
+        reader.close()
+
+        assert stacked.shape == expected_shape
+        # Constant volumes should remain constant after scaling
+        assert stacked.min() == stacked.max()
+        assert stacked[0].min() == 1
