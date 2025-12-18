@@ -10,7 +10,7 @@ readme = "README.md"
 authors = [
     { name="Philipp Flotho", email="Philipp.Flotho@uni-saarland.de" }
 ]
-license = { text = "CC BY-NC-SA 4.0" }
+license-files = ["LICENSE.txt"]
 requires-python = ">=3.10"
 classifiers = [
     "Development Status :: 3 - Alpha",
