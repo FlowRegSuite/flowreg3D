@@ -51,8 +51,12 @@ try:
     # Keep MDF reader from pyflowreg if needed (2D only)
     try:
         from pyflowreg.util.io.mdf import MDFFileReader
-    except ImportError:
+    except (ImportError, OSError, RuntimeError) as exc:
+        # Torch DLL load failures on Windows manifest as OSError; treat as optional
         MDFFileReader = None
+        warnings.warn(
+            f"pyflowreg MDF reader unavailable; continuing without it (reason: {exc})"
+        )
 except ImportError:
     # Use placeholder classes instead of object to avoid isinstance() always returning True
     class _VideoReaderPlaceholder:
