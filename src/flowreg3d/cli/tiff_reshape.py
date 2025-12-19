@@ -570,7 +570,7 @@ def reshape_tiff(args):
 
     print(f"Output shape: {output_shape}")
 
-    split_channels = bool(args.split_channels)
+    split_channels = bool(getattr(args, "split_channels", False))
     if split_channels and reader.n_channels < 2:
         print(
             "Split-channels requested but only 1 channel detected; writing a single output file."

@@ -52,20 +52,17 @@ class TestMainCLI:
 
     def test_main_verbose_flag(self):
         """Test verbose flag is recognized."""
-        # Create a minimal test file
-        with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
-            # Create simple test data
+        # Create a minimal test file (avoid open handle on Windows)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = str(Path(tmpdir) / "input.tif")
+            output_path = str(Path(tmpdir) / "output.tif")
+
             data = np.random.randint(0, 255, (10, 64, 64, 1), dtype=np.uint8)
-            writer = TIFFFileWriter3D(tmp.name)
+            writer = TIFFFileWriter3D(input_path)
             for frame in data:
                 writer.write_frames(frame[np.newaxis, :, :, :])
             writer.close()
-            input_path = tmp.name
 
-        with tempfile.NamedTemporaryFile(suffix="_out.tif", delete=False) as tmp:
-            output_path = tmp.name
-
-        try:
             with patch(
                 "sys.argv",
                 [
@@ -86,9 +83,6 @@ class TestMainCLI:
                     # Check that verbose was passed through
                     called_args = mock_reshape.call_args[0][0]
                     assert called_args.verbose is True
-        finally:
-            Path(input_path).unlink(missing_ok=True)
-            Path(output_path).unlink(missing_ok=True)
 
     def test_subcommand_routing(self):
         """Test that subcommands are routed correctly."""
@@ -239,17 +233,16 @@ class TestCLIIntegration:
     def test_dry_run_through_cli(self):
         """Test dry run mode through CLI doesn't create output."""
         # Create input file
-        with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = str(Path(tmpdir) / "input.tif")
+            output_path = str(Path(tmpdir) / "output_out.tif")
+
             data = np.random.randint(0, 255, (10, 64, 64, 1), dtype=np.uint8)
-            writer = TIFFFileWriter3D(tmp.name)
+            writer = TIFFFileWriter3D(input_path)
             for frame in data:
                 writer.write_frames(frame[np.newaxis, :, :, :])
             writer.close()
-            input_path = tmp.name
 
-        output_path = tempfile.mktemp(suffix="_out.tif")
-
-        try:
             with patch(
                 "sys.argv",
                 [
@@ -271,26 +264,20 @@ class TestCLIIntegration:
             # Verify no output file was created
             assert not Path(output_path).exists()
 
-        finally:
-            Path(input_path).unlink(missing_ok=True)
-            Path(output_path).unlink(missing_ok=True)
-
     def test_cli_with_all_options(self):
         """Test CLI with multiple options combined."""
         # Create test file with known structure
-        with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = str(Path(tmpdir) / "input.tif")
+            output_path = str(Path(tmpdir) / "output_out.tif")
+
             # 4 volumes, 5 slices each = 20 frames total
             data = np.random.randint(0, 255, (20, 32, 32, 2), dtype=np.uint16)
-            writer = TIFFFileWriter3D(tmp.name)
+            writer = TIFFFileWriter3D(input_path)
             for frame in data:
                 writer.write_frames(frame[np.newaxis, :, :, :])
             writer.close()
-            input_path = tmp.name
 
-        with tempfile.NamedTemporaryFile(suffix="_out.tif", delete=False) as tmp:
-            output_path = tmp.name
-
-        try:
             # Use complex options: volumes 1-3, stride 2, compression
             with patch(
                 "sys.argv",
@@ -327,10 +314,6 @@ class TestCLIIntegration:
             # From range [1,4) with stride 2, we get indices: 1, 3
             assert reshaped.shape[0] == 2  # Two volumes (at indices 1 and 3)
             assert reshaped.shape[1] == 5  # 5 slices per volume
-
-        finally:
-            Path(input_path).unlink(missing_ok=True)
-            Path(output_path).unlink(missing_ok=True)
 
 
 def test_cli_as_module():

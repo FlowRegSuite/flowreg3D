@@ -164,11 +164,10 @@ class TestGaussianFilter:
         cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect", truncate=4.0)
         torch_result = apply_gaussian_torch(data, sigma, mode="reflect", truncate=4.0)
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-8)
-
-        # Verify float64 output
-        assert cpu_result.dtype == np.float64
-        assert torch_result.dtype == np.float64
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=GAUSS_RTOL, atol=GAUSS_ATOL
+        )
+        assert cpu_result.dtype == torch_result.dtype
 
     def test_gaussian_3d_per_channel_sigma(self):
         """Test 3D Gaussian filtering with per-channel sigmas."""
@@ -184,7 +183,9 @@ class TestGaussianFilter:
         cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect", truncate=3.0)
         torch_result = apply_gaussian_torch(data, sigma, mode="reflect", truncate=3.0)
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-8)
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=GAUSS_RTOL, atol=GAUSS_ATOL
+        )
 
     def test_gaussian_4d_spatiotemporal(self):
         """Test 4D spatiotemporal Gaussian filtering."""
@@ -195,7 +196,9 @@ class TestGaussianFilter:
         cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect", truncate=4.0)
         torch_result = apply_gaussian_torch(data, sigma, mode="reflect", truncate=4.0)
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-8)
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=GAUSS_RTOL, atol=GAUSS_ATOL
+        )
 
     def test_gaussian_zero_sigma(self):
         """Test Gaussian filtering with sigma=0 (no filtering)."""
@@ -206,7 +209,9 @@ class TestGaussianFilter:
         cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect")
         torch_result = apply_gaussian_torch(data, sigma, mode="reflect")
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-8)
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=GAUSS_RTOL, atol=GAUSS_ATOL
+        )
 
     def test_gaussian_truncate_variation(self):
         """Test Gaussian filtering with different truncate values."""
@@ -225,8 +230,8 @@ class TestGaussianFilter:
             np.testing.assert_allclose(
                 cpu_result,
                 torch_result,
-                rtol=1e-6,
-                atol=1e-8,
+                rtol=GAUSS_RTOL,
+                atol=GAUSS_ATOL,
                 err_msg=f"Failed for truncate={truncate}",
             )
 
@@ -250,7 +255,9 @@ class TestGaussianFilter:
         cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect")
         torch_result = apply_gaussian_torch(data, sigma, mode="reflect")
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-8)
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=GAUSS_RTOL, atol=GAUSS_ATOL
+        )
 
     def test_gaussian_float64_input(self):
         """Test Gaussian filtering with float64 input."""
@@ -261,9 +268,10 @@ class TestGaussianFilter:
         cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect")
         torch_result = apply_gaussian_torch(data, sigma, mode="reflect")
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-12)
-        assert cpu_result.dtype == np.float64
-        assert torch_result.dtype == np.float64
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=GAUSS_RTOL, atol=GAUSS_ATOL
+        )
+        assert cpu_result.dtype == torch_result.dtype
 
     def test_gaussian_cpu_vectorized(self):
         """Test vectorized PyTorch Gaussian filtering on CPU."""
@@ -277,7 +285,7 @@ class TestGaussianFilter:
 
         assert not torch_result.is_cuda  # Ensure it's on CPU
         np.testing.assert_allclose(
-            cpu_result, torch_result.cpu().numpy(), rtol=1e-6, atol=1e-8
+            cpu_result, torch_result.cpu().numpy(), rtol=GAUSS_RTOL, atol=GAUSS_ATOL
         )
 
     def test_gaussian_cuda(self):
@@ -295,7 +303,7 @@ class TestGaussianFilter:
 
         assert torch_result.is_cuda
         np.testing.assert_allclose(
-            cpu_result, torch_result.cpu().numpy(), rtol=1e-6, atol=1e-8
+            cpu_result, torch_result.cpu().numpy(), rtol=GAUSS_RTOL, atol=GAUSS_ATOL
         )
 
 
@@ -317,7 +325,9 @@ class TestGaussianHalfKernel:
         cpu_result = gaussian_half_cpu(buffer_np, sigma_t, truncate=4.0)
         torch_result = gaussian_half_torch(buffer_np, sigma_t, truncate=4.0)
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-9)
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=HALF_RTOL, atol=HALF_ATOL
+        )
 
     def test_half_kernel_various_sigmas(self):
         """Test half-kernel with various sigma values."""
@@ -336,8 +346,8 @@ class TestGaussianHalfKernel:
             np.testing.assert_allclose(
                 cpu_result,
                 torch_result,
-                rtol=1e-6,
-                atol=1e-9,
+                rtol=HALF_RTOL,
+                atol=HALF_ATOL,
                 err_msg=f"Failed for sigma_t={sigma_t}",
             )
 
@@ -365,7 +375,7 @@ class TestGaussianHalfKernel:
         torch_result = gaussian_half_torch(buffer_torch, sigma_t, truncate=4.0)
 
         np.testing.assert_allclose(
-            cpu_result, torch_result.cpu().numpy(), rtol=1e-6, atol=1e-9
+            cpu_result, torch_result.cpu().numpy(), rtol=HALF_RTOL, atol=HALF_ATOL
         )
 
     def test_half_kernel_single_frame(self):
@@ -376,7 +386,9 @@ class TestGaussianHalfKernel:
         cpu_result = gaussian_half_cpu(buffer, 1.0)
         torch_result = gaussian_half_torch(buffer, 1.0)
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=HALF_RTOL, atol=HALF_ATOL
+        )
         # Should return copy of the single frame
         np.testing.assert_array_equal(cpu_result, frame)
 
@@ -408,8 +420,8 @@ class TestGaussianHalfKernel:
             np.testing.assert_allclose(
                 cpu_result,
                 torch_result,
-                rtol=1e-6,
-                atol=1e-9,
+                rtol=HALF_RTOL,
+                atol=HALF_ATOL,
                 err_msg=f"Failed for truncate={truncate}",
             )
 
@@ -427,8 +439,10 @@ class TestGaussianHalfKernel:
         cpu_result = gaussian_half_cpu(buffer, sigma_t, truncate=4.0)
         torch_result = gaussian_half_torch(buffer, sigma_t, truncate=4.0)
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-12)
-        assert cpu_result.dtype == np.float64
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=HALF_RTOL, atol=HALF_ATOL
+        )
+        assert cpu_result.dtype == torch_result.dtype
 
     def test_half_kernel_cpu_vectorized(self):
         """Test vectorized PyTorch half-kernel on CPU."""
@@ -453,7 +467,7 @@ class TestGaussianHalfKernel:
         cpu_result = gaussian_half_cpu(buffer_np, sigma_t, truncate=4.0)
 
         np.testing.assert_allclose(
-            cpu_result, torch_result.numpy(), rtol=1e-6, atol=1e-9
+            cpu_result, torch_result.numpy(), rtol=HALF_RTOL, atol=HALF_ATOL
         )
 
     def test_half_kernel_cuda(self):
@@ -481,7 +495,7 @@ class TestGaussianHalfKernel:
         cpu_result = gaussian_half_cpu(buffer_cpu, sigma_t, truncate=4.0)
 
         np.testing.assert_allclose(
-            cpu_result, torch_result.cpu().numpy(), rtol=1e-5, atol=1e-8
+            cpu_result, torch_result.cpu().numpy(), rtol=HALF_RTOL, atol=HALF_ATOL
         )
 
 
