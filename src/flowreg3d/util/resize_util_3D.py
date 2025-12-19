@@ -50,18 +50,18 @@ def _resize_z3d(src, idx, wt):
     return dst
 
 
-@njit(inline='always')
+@njit(inline="always")
 def _cubic(x):
     ax = abs(x)
     if ax < 1.0:
-        return (A + 2.0) * ax ** 3 - (A + 3.0) * ax ** 2 + 1.0
+        return (A + 2.0) * ax**3 - (A + 3.0) * ax**2 + 1.0
     elif ax < 2.0:
-        return A * ax ** 3 - 5.0 * A * ax ** 2 + 8.0 * A * ax - 4.0 * A
+        return A * ax**3 - 5.0 * A * ax**2 + 8.0 * A * ax - 4.0 * A
     else:
         return 0.0
 
 
-@njit(inline='always')
+@njit(inline="always")
 def _reflect_idx(j, n):
     if n <= 1:
         return 0
@@ -145,9 +145,22 @@ def imresize_fused_gauss_cubic3D(img, size, sigma_coeff=0.6, per_axis=False):
             y[:, :, :, k] = _resize_z3d(tmp2, idx_z, wt_z)
     else:
         raise ValueError("img must be 3D or 4D with channels-last")
+
+    # Preserve integer semantics: round then clip to dtype range before casting.
+    if np.issubdtype(img.dtype, np.integer):
+        info = np.iinfo(img.dtype)
+        y = np.rint(y)
+        np.clip(y, info.min, info.max, out=y)
+        return y.astype(img.dtype)
+
     return y.astype(img.dtype, copy=False)
 
 
 def imresize2d_gauss_cubic(img2d, out_hw, sigma_coeff=0.6):
-    y = imresize_fused_gauss_cubic3D(img2d[None, ...], (1, int(out_hw[0]), int(out_hw[1])), sigma_coeff=sigma_coeff, per_axis=True)
+    y = imresize_fused_gauss_cubic3D(
+        img2d[None, ...],
+        (1, int(out_hw[0]), int(out_hw[1])),
+        sigma_coeff=sigma_coeff,
+        per_axis=True,
+    )
     return y[0]

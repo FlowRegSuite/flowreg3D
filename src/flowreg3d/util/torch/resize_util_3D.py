@@ -20,11 +20,13 @@ def _cubic_weight_np(x: np.ndarray) -> np.ndarray:
 
     # |x| < 1
     mask1 = ax < 1.0
-    weight[mask1] = (A + 2.0) * ax[mask1]**3 - (A + 3.0) * ax[mask1]**2 + 1.0
+    weight[mask1] = (A + 2.0) * ax[mask1] ** 3 - (A + 3.0) * ax[mask1] ** 2 + 1.0
 
     # 1 <= |x| < 2
     mask2 = (ax >= 1.0) & (ax < 2.0)
-    weight[mask2] = A * ax[mask2]**3 - 5.0 * A * ax[mask2]**2 + 8.0 * A * ax[mask2] - 4.0 * A
+    weight[mask2] = (
+        A * ax[mask2] ** 3 - 5.0 * A * ax[mask2] ** 2 + 8.0 * A * ax[mask2] - 4.0 * A
+    )
 
     return weight
 
@@ -53,10 +55,7 @@ def _reflect_idx_torch(j: torch.Tensor, n: int) -> torch.Tensor:
 
 @lru_cache(maxsize=64)
 def _precompute_fused_gauss_cubic_cpu(
-    in_len: int,
-    out_len: int,
-    sigma_rounded: float,
-    dtype_str: str
+    in_len: int, out_len: int, sigma_rounded: float, dtype_str: str
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Precompute sampling indices and weights for fused Gauss+cubic interpolation.
@@ -74,7 +73,7 @@ def _precompute_fused_gauss_cubic_cpu(
     """
     sigma = sigma_rounded
     scale = out_len / in_len
-    dtype = np.float64 if dtype_str == 'float64' else np.float32
+    dtype = np.float64 if dtype_str == "float64" else np.float32
 
     # Gaussian kernel setup (same as NumPy version)
     if sigma <= 0.0:
@@ -118,7 +117,9 @@ def _precompute_fused_gauss_cubic_cpu(
     return idx, wt
 
 
-def _resize_x3d_torch(src: torch.Tensor, idx: torch.Tensor, wt: torch.Tensor) -> torch.Tensor:
+def _resize_x3d_torch(
+    src: torch.Tensor, idx: torch.Tensor, wt: torch.Tensor
+) -> torch.Tensor:
     """Resize along X axis using gather."""
     src = src.contiguous()
 
@@ -128,9 +129,13 @@ def _resize_x3d_torch(src: torch.Tensor, idx: torch.Tensor, wt: torch.Tensor) ->
 
         # Gather along W dimension
         src_expanded = src.unsqueeze(2).expand(D, H, ow, W)  # (D, H, ow, W)
-        idx_expanded = idx.unsqueeze(0).unsqueeze(0).expand(D, H, ow, P)  # (D, H, ow, P)
+        idx_expanded = (
+            idx.unsqueeze(0).unsqueeze(0).expand(D, H, ow, P)
+        )  # (D, H, ow, P)
 
-        gathered = torch.gather(src_expanded, dim=3, index=idx_expanded)  # (D, H, ow, P)
+        gathered = torch.gather(
+            src_expanded, dim=3, index=idx_expanded
+        )  # (D, H, ow, P)
         dst = (gathered * wt.unsqueeze(0).unsqueeze(0)).sum(dim=3)  # (D, H, ow)
 
     else:  # Batched: (N, D, H, W)
@@ -151,7 +156,9 @@ def _resize_x3d_torch(src: torch.Tensor, idx: torch.Tensor, wt: torch.Tensor) ->
     return dst
 
 
-def _resize_y3d_torch(src: torch.Tensor, idx: torch.Tensor, wt: torch.Tensor) -> torch.Tensor:
+def _resize_y3d_torch(
+    src: torch.Tensor, idx: torch.Tensor, wt: torch.Tensor
+) -> torch.Tensor:
     """Resize along Y axis using gather."""
     src = src.contiguous()
 
@@ -161,9 +168,13 @@ def _resize_y3d_torch(src: torch.Tensor, idx: torch.Tensor, wt: torch.Tensor) ->
 
         # Gather along H dimension
         src_expanded = src.unsqueeze(1).expand(D, oh, H, W)  # (D, oh, H, W)
-        idx_expanded = idx.unsqueeze(0).unsqueeze(3).expand(D, oh, P, W)  # (D, oh, P, W)
+        idx_expanded = (
+            idx.unsqueeze(0).unsqueeze(3).expand(D, oh, P, W)
+        )  # (D, oh, P, W)
 
-        gathered = torch.gather(src_expanded, dim=2, index=idx_expanded)  # (D, oh, P, W)
+        gathered = torch.gather(
+            src_expanded, dim=2, index=idx_expanded
+        )  # (D, oh, P, W)
         dst = (gathered * wt.unsqueeze(0).unsqueeze(3)).sum(dim=2)  # (D, oh, W)
 
     else:  # Batched
@@ -184,7 +195,9 @@ def _resize_y3d_torch(src: torch.Tensor, idx: torch.Tensor, wt: torch.Tensor) ->
     return dst
 
 
-def _resize_z3d_torch(src: torch.Tensor, idx: torch.Tensor, wt: torch.Tensor) -> torch.Tensor:
+def _resize_z3d_torch(
+    src: torch.Tensor, idx: torch.Tensor, wt: torch.Tensor
+) -> torch.Tensor:
     """Resize along Z axis using gather - fully vectorized."""
     src = src.contiguous()
 
@@ -196,7 +209,9 @@ def _resize_z3d_torch(src: torch.Tensor, idx: torch.Tensor, wt: torch.Tensor) ->
         src_expanded = src.unsqueeze(0).expand(od, D, H, W)  # (od, D, H, W)
         idx_expanded = idx.view(od, P, 1, 1).expand(od, P, H, W)  # (od, P, H, W)
 
-        gathered = torch.gather(src_expanded, dim=1, index=idx_expanded)  # (od, P, H, W)
+        gathered = torch.gather(
+            src_expanded, dim=1, index=idx_expanded
+        )  # (od, P, H, W)
         dst = (gathered * wt.view(od, P, 1, 1)).sum(dim=1)  # (od, H, W)
 
     else:  # Batched - fully vectorized
@@ -205,13 +220,19 @@ def _resize_z3d_torch(src: torch.Tensor, idx: torch.Tensor, wt: torch.Tensor) ->
 
         # Transpose to put D first for gathering
         src_transposed = src.transpose(0, 1).contiguous()  # (D, N, H, W)
-        src_expanded = src_transposed.unsqueeze(0).expand(od, D, N, H, W)  # (od, D, N, H, W)
+        src_expanded = src_transposed.unsqueeze(0).expand(
+            od, D, N, H, W
+        )  # (od, D, N, H, W)
 
         # Expand indices
-        idx_expanded = idx.view(od, P, 1, 1, 1).expand(od, P, N, H, W)  # (od, P, N, H, W)
+        idx_expanded = idx.view(od, P, 1, 1, 1).expand(
+            od, P, N, H, W
+        )  # (od, P, N, H, W)
 
         # Gather and apply weights
-        gathered = torch.gather(src_expanded, dim=1, index=idx_expanded)  # (od, P, N, H, W)
+        gathered = torch.gather(
+            src_expanded, dim=1, index=idx_expanded
+        )  # (od, P, N, H, W)
         dst = (gathered * wt.view(od, P, 1, 1, 1)).sum(dim=1)  # (od, N, H, W)
 
         # Transpose back
@@ -224,7 +245,7 @@ def imresize_fused_gauss_cubic3D(
     img: Union[np.ndarray, torch.Tensor],
     size: Tuple[int, int, int],
     sigma_coeff: float = 0.6,
-    per_axis: bool = False
+    per_axis: bool = False,
 ) -> Union[np.ndarray, torch.Tensor]:
     """
     3D resize with fused Gaussian+cubic interpolation.
@@ -245,15 +266,19 @@ def imresize_fused_gauss_cubic3D(
         input_dtype = img.dtype
         compute_dtype = np.float64 if input_dtype == np.float64 else np.float32
         img_tensor = torch.from_numpy(img.astype(compute_dtype))
-        compute_torch_dtype = torch.float64 if compute_dtype == np.float64 else torch.float32
+        compute_torch_dtype = (
+            torch.float64 if compute_dtype == np.float64 else torch.float32
+        )
     else:
         input_numpy = False
         input_dtype = img.dtype
-        compute_torch_dtype = torch.float64 if img.dtype == torch.float64 else torch.float32
+        compute_torch_dtype = (
+            torch.float64 if img.dtype == torch.float64 else torch.float32
+        )
         img_tensor = img.to(compute_torch_dtype)
 
     device = img_tensor.device
-    dtype_str = 'float64' if compute_torch_dtype == torch.float64 else 'float32'
+    dtype_str = "float64" if compute_torch_dtype == torch.float64 else "float32"
     od, oh, ow = size[:3]
 
     with torch.no_grad():
@@ -264,7 +289,6 @@ def imresize_fused_gauss_cubic3D(
             x = img_tensor.permute(3, 0, 1, 2).contiguous()
         else:
             x = img_tensor.unsqueeze(0)  # Add batch dimension
-            C = 1
 
         # Compute sigmas (same logic as NumPy)
         sz = od / x.shape[1]  # D is at dim 1 now
@@ -314,17 +338,35 @@ def imresize_fused_gauss_cubic3D(
             # Remove batch dimension
             y = y.squeeze(0)
 
-        # Convert back to original dtype
+        # Convert back to original dtype with integer-safe rounding/clipping
         if input_numpy:
-            return y.cpu().numpy().astype(input_dtype)
+            y_np = y.cpu().numpy()
+            if np.issubdtype(input_dtype, np.integer):
+                info = np.iinfo(input_dtype)
+                y_np = np.rint(y_np)
+                np.clip(y_np, info.min, info.max, out=y_np)
+                return y_np.astype(input_dtype)
+            return y_np.astype(input_dtype, copy=False)
         else:
-            return y.to(input_dtype)
+            integer_dtypes = {
+                torch.uint8,
+                torch.int8,
+                torch.int16,
+                torch.int32,
+                torch.int64,
+            }
+            if input_dtype in integer_dtypes:
+                info = torch.iinfo(input_dtype)
+                y = y.round()
+                y = torch.clamp(y, min=info.min, max=info.max)
+                return y.to(dtype=input_dtype)
+            return y.to(dtype=input_dtype)
 
 
 def imresize2d_gauss_cubic(
     img2d: Union[np.ndarray, torch.Tensor],
     out_hw: Tuple[int, int],
-    sigma_coeff: float = 0.6
+    sigma_coeff: float = 0.6,
 ) -> Union[np.ndarray, torch.Tensor]:
     """
     2D resize wrapper using 3D implementation.
@@ -340,7 +382,7 @@ def imresize2d_gauss_cubic(
         img3d,
         (1, int(out_hw[0]), int(out_hw[1])),
         sigma_coeff=sigma_coeff,
-        per_axis=True
+        per_axis=True,
     )
 
     # Remove singleton Z dimension

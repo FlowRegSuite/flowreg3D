@@ -110,6 +110,105 @@ class ReshapeTIFFReader(TIFFFileReader):
     def prefers_series_reader(self) -> bool:
         return self._should_use_series_reader()
 
+    # --- Custom series reader to handle TZCYX/TZYX robustly ---
+    def _reorder_to_yxc(self, frame: np.ndarray, axes: str) -> np.ndarray:
+        """Return frame reordered to (Y, X, C) adding channel axis if missing."""
+        axes = axes.upper()
+        if "Y" not in axes or "X" not in axes:
+            raise ValueError(f"Series axes missing Y/X dimensions: {axes}")
+
+        order = [axes.index("Y"), axes.index("X")]
+
+        channel_axis = None
+        if "C" in axes:
+            channel_axis = axes.index("C")
+        elif "S" in axes:
+            channel_axis = axes.index("S")
+
+        if channel_axis is not None:
+            order.append(channel_axis)
+            reordered = np.transpose(frame, order)
+        else:
+            reordered = np.transpose(frame, order)
+            reordered = reordered[:, :, np.newaxis]
+
+        # Ensure final shape is (Y, X, C)
+        if reordered.ndim == 2:
+            reordered = reordered[:, :, np.newaxis]
+        return reordered
+
+    def _read_series_mode(self, frame_indices, output):  # type: ignore[override]
+        """
+        Robust series reader for multi-axis TIFFs.
+
+        Handles TZCYX/TZYX by flattening Z into time when needed and squeezing
+        singleton Z. For genuinely volumetric stacks (Z>1, T>1) we flatten
+        (t,z) into sequential frames to keep reshape logic predictable.
+        """
+        if not hasattr(self, "_tiff_series") or self._tiff_series is None:
+            return super()._read_series_mode(frame_indices, output)
+
+        data = (
+            self._tiff_series.asarray(out="memmap")
+            if getattr(self, "use_memmap", True)
+            else self._tiff_series.asarray()
+        )
+        axes = (getattr(self._tiff_series, "axes", "") or "").upper()
+
+        def slice_frame(t_idx=None, z_idx=None):
+            idx = [slice(None)] * data.ndim
+            if t_idx is not None and "T" in axes:
+                idx[axes.index("T")] = t_idx
+            if z_idx is not None and "Z" in axes:
+                idx[axes.index("Z")] = z_idx
+            return data[tuple(idx)]
+
+        # Case: time + depth present (TZCYX/TZYX or similar)
+        if "T" in axes and "Z" in axes:
+            t_len = data.shape[axes.index("T")]
+            z_len = data.shape[axes.index("Z")]
+            total_frames = t_len * z_len
+
+            for out_i, frame_idx in enumerate(frame_indices):
+                if frame_idx < 0 or frame_idx >= total_frames:
+                    raise IndexError(
+                        f"Frame index {frame_idx} out of range {total_frames}"
+                    )
+
+                t = frame_idx // z_len
+                z = frame_idx % z_len
+
+                frame = slice_frame(t_idx=t, z_idx=z)
+                # Drop T/Z from axes to describe the sliced frame
+                frame_axes = "".join(ch for ch in axes if ch not in ("T", "Z"))
+                output[out_i] = self._reorder_to_yxc(frame, frame_axes)
+            return
+
+        # Case: only time axis present
+        if "T" in axes:
+            t_len = data.shape[axes.index("T")]
+            for out_i, frame_idx in enumerate(frame_indices):
+                if frame_idx < 0 or frame_idx >= t_len:
+                    raise IndexError(f"Frame index {frame_idx} out of range {t_len}")
+                frame = np.take(data, frame_idx, axis=axes.index("T"))
+                frame_axes = axes.replace("T", "")
+                output[out_i] = self._reorder_to_yxc(frame, frame_axes)
+            return
+
+        # Case: only depth axis present (ZCYX/ZYX)
+        if "Z" in axes:
+            z_len = data.shape[axes.index("Z")]
+            for out_i, frame_idx in enumerate(frame_indices):
+                if frame_idx < 0 or frame_idx >= z_len:
+                    raise IndexError(f"Frame index {frame_idx} out of range {z_len}")
+                frame = np.take(data, frame_idx, axis=axes.index("Z"))
+                frame_axes = axes.replace("Z", "")
+                output[out_i] = self._reorder_to_yxc(frame, frame_axes)
+            return
+
+        # Fallback to base behavior for other layouts
+        return super()._read_series_mode(frame_indices, output)
+
 
 def _parse_scale(scale_values):
     """Validate and normalize per-axis scale factors (X, Y, Z order)."""
