@@ -13,7 +13,7 @@ This project is still in an **alpha stage**. Expect rapid changes, incomplete fe
 - Feedback and bug reports are especially valuable at this stage.
 - GPU implementation currently produces numerical differences compared to the CPU version and might require different parameter settings.
 
-# <img src="https://raw.githubusercontent.com/FlowRegSuite/flowreg3d/refs/heads/main/img/flowreglogo.png" alt="FlowReg logo" height="64"> flowreg3D
+# <img src="https://raw.githubusercontent.com/flowregsuite/flowreg3D/1a535246575f9fc5de89ff651c9727af7b3660fe/img/flowreglogo.png" alt="FlowReg logo" height="64"> flowreg3D
 
 Python implementation of volumetric optical flow for motion correction in 3D fluorescence microscopy. Building on the 2D Flow-Registration insights, flowreg3D provides **natively 3D dense** motion analysis and correction with **subpixel-precision** for non-rigid motion volumetric microscopy data.
 
@@ -23,7 +23,7 @@ Python implementation of volumetric optical flow for motion correction in 3D flu
 - ImageJ/Fiji plugin: https://github.com/FlowRegSuite/flow_registration_IJ
 - Napari plugin: https://github.com/FlowRegSuite/napari-flowreg
 
-![Fig1](https://raw.githubusercontent.com/FlowRegSuite/flowreg3d/refs/heads/main/img/bg.jpg)
+![Fig1](https://raw.githubusercontent.com/flowregsuite/flowreg3D/1a535246575f9fc5de89ff651c9727af7b3660fe/img/comparison.png)
 
 ## Features
 
