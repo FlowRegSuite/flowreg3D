@@ -17,7 +17,9 @@ from flowreg3d.cli.tiff_reshape import reshape_tiff, add_tiff_reshape_parser
 @pytest.fixture
 def flat_tiff_file():
     """Create a flat TIFF file simulating a 3D stack stored as 2D slices."""
-    with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as tmp:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tiff_path = Path(tmpdir) / "flat.tif"
+
         # Create test data: 3 volumes, 10 slices per volume, 64x64 pixels, 2 channels
         n_volumes = 3
         slices_per_volume = 10
@@ -33,7 +35,7 @@ def flat_tiff_file():
         )
 
         # Write as flat TIFF using 3D writer but with T dimension only
-        writer = TIFFFileWriter3D(tmp.name, dim_order="TYXC")
+        writer = TIFFFileWriter3D(str(tiff_path), dim_order="TYXC")
 
         # Write each frame individually to simulate flat structure
         for frame in flat_data:
@@ -43,20 +45,7 @@ def flat_tiff_file():
 
         writer.close()
 
-        yield tmp.name, n_volumes, slices_per_volume, flat_data
-
-        # Cleanup - with retry for Windows file locks
-        import time
-
-        for attempt in range(3):
-            try:
-                Path(tmp.name).unlink(missing_ok=True)
-                break
-            except PermissionError:
-                if attempt < 2:
-                    time.sleep(0.1)  # Give Windows time to release the file
-                else:
-                    pass  # Ignore on final attempt
+        yield str(tiff_path), n_volumes, slices_per_volume, flat_data
 
 
 def test_reshape_basic(flat_tiff_file):
@@ -84,6 +73,7 @@ def test_reshape_basic(flat_tiff_file):
             imagej=False,
             dry_run=False,
             verbose=False,
+            split_channels=False,
             overwrite=True,
         )
 
@@ -146,6 +136,7 @@ def test_reshape_with_volume_selection(flat_tiff_file):
             imagej=False,
             dry_run=False,
             verbose=False,
+            split_channels=False,
             overwrite=True,
         )
 
@@ -206,6 +197,7 @@ def test_reshape_with_stride(flat_tiff_file):
             imagej=False,
             dry_run=False,
             verbose=False,
+            split_channels=False,
             overwrite=True,
         )
 
@@ -281,6 +273,7 @@ def test_reshape_with_scale():
             imagej=False,
             dry_run=False,
             verbose=False,
+            split_channels=False,
             overwrite=True,
         )
 
@@ -299,8 +292,8 @@ def test_reshape_with_scale():
             1,
         )
         assert data.shape == expected_shape
-        assert data.min() == data.max()
-        assert data[0].min() == 1
+        assert data[0].min() == data[0].max() == 1
+        assert data[1].min() == data[1].max() == 2
     finally:
         Path(input_path).unlink(missing_ok=True)
         Path(output_path).unlink(missing_ok=True)
@@ -333,6 +326,7 @@ def test_reshape_dry_run(flat_tiff_file):
             imagej=False,
             dry_run=True,  # Dry run mode
             verbose=False,
+            split_channels=False,
             overwrite=True,
         )
 

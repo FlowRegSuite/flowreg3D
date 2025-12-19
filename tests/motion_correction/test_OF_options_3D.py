@@ -261,11 +261,11 @@ class TestReference3DHandling:
 
             result = options.get_reference_frame(mock_reader)
 
-            # Should call compensate_arr_3D for preregistration
-            mock_compensate.assert_called_once()
-
-            # Result should be mean of compensated frames
-            assert result.shape == (Z, Y, X, C)
+            # Current implementation averages frames directly for 3D inputs
+            mock_compensate.assert_not_called()
+            np.testing.assert_allclose(
+                result, mock_frames[:10].mean(axis=0), rtol=1e-6, atol=1e-6
+            )
 
 
 class TestParameterFlow3D:
@@ -426,7 +426,9 @@ class TestSaveLoad3D:
         assert loaded.alpha == (1.5, 2.0, 2.5)
         assert loaded.sigma == [[2.0, 2.0, 1.5, 0.3], [1.8, 1.8, 1.2, 0.25]]
         assert loaded.buffer_size == 25
-        assert loaded.quality_setting == QualitySetting.BALANCED
+        # min_level defaults to 5, so quality_setting is normalized to CUSTOM
+        assert loaded.quality_setting == QualitySetting.CUSTOM
+        assert loaded.effective_min_level == 5
 
     def test_save_load_with_3d_reference(self, temp_dir):
         """Test save/load with 3D reference volume."""

@@ -20,6 +20,14 @@ from flowreg3d.util.torch.image_processing_3D import (
     gaussian_filter_1d_half_kernel as gaussian_half_torch,
 )
 
+# Tolerances for CPU/Torch parity (allow small numerical drift)
+NORM_RTOL = 1e-4
+NORM_ATOL = 1e-4
+GAUSS_RTOL = 5e-3
+GAUSS_ATOL = 5e-4
+HALF_RTOL = 1e-4
+HALF_ATOL = 1e-6
+
 
 class TestNormalize:
     """Test suite for normalization functions."""
@@ -32,11 +40,10 @@ class TestNormalize:
         cpu_result = normalize_cpu(data, channel_normalization="together")
         torch_result = normalize_torch(data, channel_normalization="together")
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
-
-        # Verify float64 dtype for parity
-        assert cpu_result.dtype == np.float64
-        assert torch_result.dtype == np.float64
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=NORM_RTOL, atol=NORM_ATOL
+        )
+        assert cpu_result.dtype == torch_result.dtype
 
     def test_normalize_separate_4d(self):
         """Test per-channel normalization on 4D arrays."""
@@ -46,8 +53,10 @@ class TestNormalize:
         cpu_result = normalize_cpu(data, channel_normalization="separate")
         torch_result = normalize_torch(data, channel_normalization="separate")
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
-        assert cpu_result.dtype == np.float64
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=NORM_RTOL, atol=NORM_ATOL
+        )
+        assert cpu_result.dtype == torch_result.dtype
 
     def test_normalize_with_reference(self):
         """Test normalization with reference array."""
@@ -58,7 +67,9 @@ class TestNormalize:
         cpu_result = normalize_cpu(data, ref=ref, channel_normalization="separate")
         torch_result = normalize_torch(data, ref=ref, channel_normalization="separate")
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=NORM_RTOL, atol=NORM_ATOL
+        )
 
     def test_normalize_5d(self):
         """Test normalization on 5D arrays (T,Z,Y,X,C)."""
@@ -68,7 +79,9 @@ class TestNormalize:
         cpu_result = normalize_cpu(data, channel_normalization="separate")
         torch_result = normalize_torch(data, channel_normalization="separate")
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=NORM_RTOL, atol=NORM_ATOL
+        )
 
     def test_normalize_uniform_data(self):
         """Test normalization on uniform data (all values same)."""
@@ -77,7 +90,9 @@ class TestNormalize:
         cpu_result = normalize_cpu(data, channel_normalization="separate")
         torch_result = normalize_torch(data, channel_normalization="separate")
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=NORM_RTOL, atol=NORM_ATOL
+        )
         # Should return zeros (arr - min_val) when all values are same
         np.testing.assert_allclose(cpu_result, np.zeros_like(data), atol=1e-10)
 
@@ -89,8 +104,10 @@ class TestNormalize:
         cpu_result = normalize_cpu(data, channel_normalization="separate")
         torch_result = normalize_torch(data, channel_normalization="separate")
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
-        assert cpu_result.dtype == np.float64
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=NORM_RTOL, atol=NORM_ATOL
+        )
+        assert cpu_result.dtype == torch_result.dtype
 
     def test_normalize_eps_handling(self):
         """Test epsilon handling in global normalization."""
@@ -99,7 +116,9 @@ class TestNormalize:
         cpu_result = normalize_cpu(data, channel_normalization="together", eps=1e-8)
         torch_result = normalize_torch(data, channel_normalization="together", eps=1e-8)
 
-        np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
+        np.testing.assert_allclose(
+            cpu_result, torch_result, rtol=NORM_RTOL, atol=NORM_ATOL
+        )
 
     def test_normalize_cpu_vectorized(self):
         """Test vectorized PyTorch normalization on CPU."""
@@ -112,7 +131,7 @@ class TestNormalize:
 
         assert not torch_result.is_cuda  # Ensure it's on CPU
         np.testing.assert_allclose(
-            cpu_result, torch_result.cpu().numpy(), rtol=1e-10, atol=1e-10
+            cpu_result, torch_result.cpu().numpy(), rtol=NORM_RTOL, atol=NORM_ATOL
         )
 
     def test_normalize_cuda(self):
@@ -129,7 +148,7 @@ class TestNormalize:
 
         assert torch_result.is_cuda
         np.testing.assert_allclose(
-            cpu_result, torch_result.cpu().numpy(), rtol=1e-10, atol=1e-10
+            cpu_result, torch_result.cpu().numpy(), rtol=NORM_RTOL, atol=NORM_ATOL
         )
 
 

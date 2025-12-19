@@ -49,7 +49,7 @@ class TestParallelizationExecutors:
         compensator = BatchMotionCorrector(options, config)
 
         # Verify sequential executor is used
-        assert compensator.executor.__class__.__name__ == "Sequential3DExecutor"
+        assert compensator.executor.__class__.__name__ == "SequentialExecutor3D"
 
         # Run
         compensator.run()
@@ -95,7 +95,7 @@ class TestParallelizationExecutors:
         compensator = BatchMotionCorrector(options, config)
 
         # Verify threading executor is used
-        assert compensator.executor.__class__.__name__ == "Threading3DExecutor"
+        assert compensator.executor.__class__.__name__ == "ThreadingExecutor3D"
 
         # Run
         compensator.run()
@@ -135,7 +135,7 @@ class TestParallelizationExecutors:
         compensator = BatchMotionCorrector(options, config)
 
         # Verify multiprocessing executor is used
-        assert compensator.executor.__class__.__name__ == "Multiprocessing3DExecutor"
+        assert compensator.executor.__class__.__name__ == "MultiprocessingExecutor3D"
 
         # Run
         compensator.run()

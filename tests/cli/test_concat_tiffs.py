@@ -205,6 +205,6 @@ def test_concat_tiffs_with_scale():
         reader.close()
 
         assert stacked.shape == expected_shape
-        # Constant volumes should remain constant after scaling
-        assert stacked.min() == stacked.max()
-        assert stacked[0].min() == 1
+        # Constant volumes should remain constant after scaling (per volume)
+        assert stacked[0].min() == stacked[0].max() == 1
+        assert stacked[1].min() == stacked[1].max() == 2
