@@ -6,7 +6,7 @@ Provides normalization and Gaussian filtering functions.
 import torch
 import torch.nn.functional as F
 import numpy as np
-from typing import Optional, Literal, Union, List
+from typing import Optional, Literal, Union
 from collections import deque
 from functools import lru_cache
 
@@ -14,8 +14,8 @@ from functools import lru_cache
 def normalize(
     arr: Union[np.ndarray, torch.Tensor],
     ref: Optional[Union[np.ndarray, torch.Tensor]] = None,
-    channel_normalization: Literal['together', 'separate'] = 'together',
-    eps: float = 1e-8
+    channel_normalization: Literal["together", "separate"] = "together",
+    eps: float = 1e-8,
 ) -> Union[np.ndarray, torch.Tensor]:
     """
     Normalize array to [0,1] range with exact parity to NumPy version.
@@ -47,7 +47,7 @@ def normalize(
 
     device = arr_tensor.device
 
-    if channel_normalization == 'separate':
+    if channel_normalization == "separate":
         # Per-channel normalization - matches NumPy's float64 allocation
         result = torch.zeros_like(arr_tensor, dtype=torch.float64, device=device)
 
@@ -140,9 +140,7 @@ def normalize(
 
 @lru_cache(maxsize=128)
 def _get_gaussian_kernel_1d_cpu(
-    sigma: float,
-    truncate: float,
-    dtype_str: str
+    sigma: float, truncate: float, dtype_str: str
 ) -> np.ndarray:
     """
     Create 1D Gaussian kernel on CPU matching scipy's implementation.
@@ -156,7 +154,7 @@ def _get_gaussian_kernel_1d_cpu(
     Returns:
         1D Gaussian kernel as numpy array
     """
-    dtype = np.float64 if dtype_str == 'float64' else np.float32
+    dtype = np.float64 if dtype_str == "float64" else np.float32
 
     if sigma <= 0:
         kernel = np.array([1.0], dtype=dtype)
@@ -170,9 +168,7 @@ def _get_gaussian_kernel_1d_cpu(
 
 
 def _apply_separable_gaussian_3d(
-    arr: torch.Tensor,
-    sigmas: tuple,
-    truncate: float = 4.0
+    arr: torch.Tensor, sigmas: tuple, truncate: float = 4.0
 ) -> torch.Tensor:
     """
     Apply separable 3D Gaussian filter using 1D convolutions.
@@ -186,7 +182,7 @@ def _apply_separable_gaussian_3d(
         Filtered tensor
     """
     sz, sy, sx = sigmas
-    dtype_str = 'float64' if arr.dtype == torch.float64 else 'float32'
+    dtype_str = "float64" if arr.dtype == torch.float64 else "float32"
     device = arr.device
 
     # Ensure contiguous
@@ -209,7 +205,7 @@ def _apply_separable_gaussian_3d(
         kernel_z = torch.from_numpy(kernel_np).to(device=device, dtype=arr.dtype)
         radius_z = (len(kernel_z) - 1) // 2
         if radius_z > 0:
-            x = F.pad(x, (0, 0, 0, 0, radius_z, radius_z), mode='reflect')
+            x = F.pad(x, (0, 0, 0, 0, radius_z, radius_z), mode="reflect")
         weight_z = kernel_z.view(1, 1, -1, 1, 1)
         x = F.conv3d(x, weight_z, stride=1, padding=0)
 
@@ -219,7 +215,7 @@ def _apply_separable_gaussian_3d(
         kernel_y = torch.from_numpy(kernel_np).to(device=device, dtype=arr.dtype)
         radius_y = (len(kernel_y) - 1) // 2
         if radius_y > 0:
-            x = F.pad(x, (0, 0, radius_y, radius_y, 0, 0), mode='reflect')
+            x = F.pad(x, (0, 0, radius_y, radius_y, 0, 0), mode="reflect")
         weight_y = kernel_y.view(1, 1, 1, -1, 1)
         x = F.conv3d(x, weight_y, stride=1, padding=0)
 
@@ -229,7 +225,7 @@ def _apply_separable_gaussian_3d(
         kernel_x = torch.from_numpy(kernel_np).to(device=device, dtype=arr.dtype)
         radius_x = (len(kernel_x) - 1) // 2
         if radius_x > 0:
-            x = F.pad(x, (radius_x, radius_x, 0, 0, 0, 0), mode='reflect')
+            x = F.pad(x, (radius_x, radius_x, 0, 0, 0, 0), mode="reflect")
         weight_x = kernel_x.view(1, 1, 1, 1, -1)
         x = F.conv3d(x, weight_x, stride=1, padding=0)
 
@@ -243,8 +239,8 @@ def _apply_separable_gaussian_3d(
 def apply_gaussian_filter(
     arr: Union[np.ndarray, torch.Tensor],
     sigma: Union[np.ndarray, torch.Tensor],
-    mode: str = 'reflect',
-    truncate: float = 4.0
+    mode: str = "reflect",
+    truncate: float = 4.0,
 ) -> Union[np.ndarray, torch.Tensor]:
     """
     Apply Gaussian filtering with exact parity to NumPy/SciPy version.
@@ -261,7 +257,7 @@ def apply_gaussian_filter(
         Filtered array (always float64 to match NumPy version)
     """
     # Enforce mode='reflect' for parity
-    if mode != 'reflect':
+    if mode != "reflect":
         raise ValueError("Only 'reflect' mode is supported to match CPU behavior.")
 
     # Handle input conversion
@@ -327,8 +323,10 @@ def apply_gaussian_filter(
             # Temporal filtering along T dimension
             if st > 0:
                 # Apply 1D convolution along time dimension
-                kernel_np = _get_gaussian_kernel_1d_cpu(st, truncate, 'float64')
-                kernel_t = torch.from_numpy(kernel_np).to(device=device, dtype=torch.float64)
+                kernel_np = _get_gaussian_kernel_1d_cpu(st, truncate, "float64")
+                kernel_t = torch.from_numpy(kernel_np).to(
+                    device=device, dtype=torch.float64
+                )
                 radius_t = (len(kernel_t) - 1) // 2
 
                 # Reshape for 1D conv: (1, 1, T, Z*Y*X)
@@ -336,7 +334,9 @@ def apply_gaussian_filter(
                 data_reshaped = channel_data.reshape(1, 1, T, -1)
 
                 if radius_t > 0:
-                    data_reshaped = F.pad(data_reshaped, (0, 0, radius_t, radius_t), mode='reflect')
+                    data_reshaped = F.pad(
+                        data_reshaped, (0, 0, radius_t, radius_t), mode="reflect"
+                    )
 
                 # Apply temporal convolution
                 weight_t = kernel_t.view(1, 1, -1, 1)
@@ -351,9 +351,7 @@ def apply_gaussian_filter(
         # Unsupported dimensionality - apply directly (ensure float64)
         arr_float = arr_tensor.to(torch.float64)
         result = _apply_separable_gaussian_3d(
-            arr_float,
-            tuple(sigma_np) if len(sigma_np) >= 3 else (0, 0, 0),
-            truncate
+            arr_float, tuple(sigma_np) if len(sigma_np) >= 3 else (0, 0, 0), truncate
         )
 
     # Return with same type as input
@@ -364,10 +362,7 @@ def apply_gaussian_filter(
 
 
 def gaussian_filter_1d_half_kernel(
-    buffer: deque,
-    sigma_t: float,
-    mode: str = 'reflect',
-    truncate: float = 4.0
+    buffer: deque, sigma_t: float, mode: str = "reflect", truncate: float = 4.0
 ) -> Union[np.ndarray, torch.Tensor]:
     """
     Fast 1D Gaussian filter using half kernel for temporal dimension.
@@ -386,11 +381,19 @@ def gaussian_filter_1d_half_kernel(
         return None
 
     if len(buffer) == 1:
-        return buffer[-1].copy() if isinstance(buffer[-1], np.ndarray) else buffer[-1].clone()
+        return (
+            buffer[-1].copy()
+            if isinstance(buffer[-1], np.ndarray)
+            else buffer[-1].clone()
+        )
 
     # No temporal filtering if sigma is 0
     if sigma_t <= 0:
-        return buffer[-1].copy() if isinstance(buffer[-1], np.ndarray) else buffer[-1].clone()
+        return (
+            buffer[-1].copy()
+            if isinstance(buffer[-1], np.ndarray)
+            else buffer[-1].clone()
+        )
 
     # Determine if we're working with numpy or torch
     input_numpy = isinstance(buffer[-1], np.ndarray)

@@ -10,15 +10,19 @@ from flowreg3d.motion_correction.OF_options_3D import OFOptions, OutputFormat
 from flowreg3d.motion_correction.compensate_recording_3D import BatchMotionCorrector
 
 
-def compensate_arr_3D(c1: np.ndarray, c_ref: np.ndarray, options: Optional[OFOptions] = None, 
-                   progress_callback: Optional[Callable[[int, int], None]] = None) -> Tuple[np.ndarray, np.ndarray]:
+def compensate_arr_3D(
+    c1: np.ndarray,
+    c_ref: np.ndarray,
+    options: Optional[OFOptions] = None,
+    progress_callback: Optional[Callable[[int, int], None]] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Process arrays in memory matching MATLAB compensate_inplace functionality.
-    
+
     This function provides the same motion compensation as compensate_recording
     but operates on in-memory arrays instead of files. It uses the same batching
     and flow initialization logic to ensure algorithmic consistency.
-    
+
     Args:
         c1: Input array to register, shape (T,Z,Y,X,C), (Z,Y,X,C), or (T,Z,Y,X)
             For single-channel 4D arrays, assumes (T,Z,Y,X) if T > 4, else (Z,Y,X,C)
@@ -26,20 +30,20 @@ def compensate_arr_3D(c1: np.ndarray, c_ref: np.ndarray, options: Optional[OFOpt
         options: OF_options configuration. If None, uses defaults.
         progress_callback: Optional callback function that receives (current_frame, total_frames)
             for progress updates. Note: For multiprocessing executor, updates are batch-wise.
-    
+
     Returns:
         Tuple of:
             - c_reg: Registered array with same shape as input
             - w: Displacement fields, shape (T,Z,Y,X,3) with [u,v,w] components
-    
+
     Example:
         >>> import numpy as np
         >>> from flowreg3d.motion_correction import compensate_arr_3D
-        >>> 
+        >>>
         >>> # Create test data
         >>> video = np.random.rand(10, 50, 256, 256, 2)  # 10 timepoints, 50 slices, 2 channels
         >>> reference = np.mean(video[:10], axis=0)
-        >>> 
+        >>>
         >>> # Register with progress callback
         >>> def progress(current, total):
         ...     print(f"Progress: {current}/{total} ({100*current/total:.1f}%)")
@@ -48,11 +52,11 @@ def compensate_arr_3D(c1: np.ndarray, c_ref: np.ndarray, options: Optional[OFOpt
     # Handle 4D squeeze for single channel (MATLAB compatibility)
     squeezed = False
     original_shape = c1.shape
-    
+
     # Validate input is not empty
     if c1.size == 0:
         raise ValueError("Input array cannot be empty")
-    
+
     if c1.ndim == 4 and c_ref.ndim == 3:
         # Input is 4D, reference is 3D - add channel dimension
         c1 = c1[..., np.newaxis]
@@ -64,56 +68,58 @@ def compensate_arr_3D(c1: np.ndarray, c_ref: np.ndarray, options: Optional[OFOpt
         if c_ref.ndim == 3:
             c_ref = c_ref[..., np.newaxis]
         squeezed = True
-    
+
     # Configure options for array processing
     if options is None:
         options = OFOptions()
     else:
         # Make a copy to avoid modifying user's options
         options = options.copy()
-    
+
     # Set up for array I/O
     options.input_file = c1  # Will be wrapped by factory into ArrayReader
     options.reference_frames = c_ref
-    options.output_format = OutputFormat.ARRAY  # Triggers ArrayWriter in factory (must be enum value)
-    
+    options.output_format = (
+        OutputFormat.ARRAY
+    )  # Triggers ArrayWriter in factory (must be enum value)
+
     # Enable saving displacement fields to get them back
     options.save_w = True
-    
+
     # Disable file-based features
     options.save_meta_info = False
-    
+
     # Run standard pipeline
     compensator = BatchMotionCorrector(options)
-    
+
     # Register progress callback if provided
     if progress_callback is not None:
         compensator.register_progress_callback(progress_callback)
-    
+
     compensator.run()
-    
+
     # Get results from ArrayWriter
     c_reg = compensator.video_writer.get_array()
-    
+
     # Get flow fields from the w_writer (which is also an ArrayWriter when output is ARRAY)
     w = None
     if compensator.w_writer is not None:
         w = compensator.w_writer.get_array()
-    
+
     # TODO: Handle output_typename casting in ArrayWriter instead of here
     # For now, manual casting if specified
-    if hasattr(options, 'output_typename') and options.output_typename:
+    if hasattr(options, "output_typename") and options.output_typename:
         dtype_map = {
-            'single': np.float32,
-            'double': np.float64,
-            'uint8': np.uint8,
-            'uint16': np.uint16,
-            'int16': np.int16,
-            'int32': np.int32,
+            "single": np.float32,
+            "double": np.float64,
+            "uint8": np.uint8,
+            "uint16": np.uint16,
+            "int16": np.int16,
+            "int32": np.int32,
         }
         if options.output_typename in dtype_map:
             c_reg = c_reg.astype(dtype_map[options.output_typename])
-    
+
     # Squeeze back if needed to match input shape
     if squeezed:
         if len(original_shape) == 3:
@@ -122,9 +128,9 @@ def compensate_arr_3D(c1: np.ndarray, c_ref: np.ndarray, options: Optional[OFOpt
             if w is not None:
                 w = np.squeeze(w, axis=0)  # Remove time dimension
         elif len(original_shape) == 4:
-            # Was (T,Z,Y,X) or (Z,Y,X,C) 
+            # Was (T,Z,Y,X) or (Z,Y,X,C)
             c_reg = np.squeeze(c_reg, axis=-1)  # Remove channel dimension
-    
+
     # If no flow fields were captured, create empty array
     if w is None:
         if c_reg.ndim >= 4:
@@ -133,5 +139,5 @@ def compensate_arr_3D(c1: np.ndarray, c_ref: np.ndarray, options: Optional[OFOpt
         else:
             T, Z, Y, X = 1, c_reg.shape[0], c_reg.shape[1], c_reg.shape[2]
         w = np.zeros((T, Z, Y, X, 3), dtype=np.float32)
-    
+
     return c_reg, w

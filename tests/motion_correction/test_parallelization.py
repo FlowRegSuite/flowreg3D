@@ -5,7 +5,10 @@ import pytest
 from typing import List, Tuple
 
 from flowreg3d.motion_correction.compensate_arr_3D import compensate_arr_3D
-from flowreg3d.motion_correction.compensate_recording_3D import BatchMotionCorrector, RegistrationConfig
+from flowreg3d.motion_correction.compensate_recording_3D import (
+    BatchMotionCorrector,
+    RegistrationConfig,
+)
 from flowreg3d.motion_correction.OF_options_3D import OFOptions, OutputFormat
 from flowreg3d._runtime import RuntimeContext
 
@@ -15,17 +18,16 @@ class TestParallelizationExecutors:
 
     def test_all_executors_available(self):
         """Test that all expected 3D executors are registered."""
-        available = RuntimeContext.get('available_parallelization', set())
+        available = RuntimeContext.get("available_parallelization", set())
 
         # At minimum, sequential3d should be available
-        assert 'sequential3d' in available, "Sequential3D executor not available"
+        assert "sequential3d" in available, "Sequential3D executor not available"
 
         # Check if other executors are registered
         print(f"Available executors: {available}")
 
     def test_sequential_executor(self):
         """Test sequential 3D executor processing."""
-        from flowreg3d.motion_correction.parallelization.sequential_3d import Sequential3DExecutor
 
         # Create 3D test data
         T, Z, Y, X, C = 5, 8, 16, 16, 2
@@ -33,7 +35,7 @@ class TestParallelizationExecutors:
         reference = np.mean(video[:2], axis=0)
 
         # Configure for sequential processing
-        config = RegistrationConfig(parallelization='sequential3d')
+        config = RegistrationConfig(parallelization="sequential3d")
         options = OFOptions(quality_setting="fast")
 
         # Setup for array processing
@@ -47,7 +49,7 @@ class TestParallelizationExecutors:
         compensator = BatchMotionCorrector(options, config)
 
         # Verify sequential executor is used
-        assert compensator.executor.__class__.__name__ == 'Sequential3DExecutor'
+        assert compensator.executor.__class__.__name__ == "Sequential3DExecutor"
 
         # Run
         compensator.run()
@@ -58,13 +60,19 @@ class TestParallelizationExecutors:
 
         # Verify results
         assert registered.shape == video.shape
-        assert flow is not None and flow.shape == (T, Z, Y, X, 3)  # 3D flow has 3 components
+        assert flow is not None and flow.shape == (
+            T,
+            Z,
+            Y,
+            X,
+            3,
+        )  # 3D flow has 3 components
 
     def test_threading_executor(self):
         """Test threading 3D executor if available."""
-        available = RuntimeContext.get('available_parallelization', set())
+        available = RuntimeContext.get("available_parallelization", set())
 
-        if 'threading3d' not in available:
+        if "threading3d" not in available:
             pytest.skip("Threading3D executor not available")
 
         # Create 3D test data
@@ -73,7 +81,7 @@ class TestParallelizationExecutors:
         reference = np.mean(video[:3], axis=0)
 
         # Configure for threading
-        config = RegistrationConfig(parallelization='threading3d', n_jobs=2)
+        config = RegistrationConfig(parallelization="threading3d", n_jobs=2)
         options = OFOptions(quality_setting="fast")
 
         # Setup for array processing
@@ -87,7 +95,7 @@ class TestParallelizationExecutors:
         compensator = BatchMotionCorrector(options, config)
 
         # Verify threading executor is used
-        assert compensator.executor.__class__.__name__ == 'Threading3DExecutor'
+        assert compensator.executor.__class__.__name__ == "Threading3DExecutor"
 
         # Run
         compensator.run()
@@ -102,9 +110,9 @@ class TestParallelizationExecutors:
 
     def test_multiprocessing_executor(self):
         """Test multiprocessing 3D executor if available."""
-        available = RuntimeContext.get('available_parallelization', set())
+        available = RuntimeContext.get("available_parallelization", set())
 
-        if 'multiprocessing3d' not in available:
+        if "multiprocessing3d" not in available:
             pytest.skip("Multiprocessing3D executor not available")
 
         # Create 3D test data
@@ -113,7 +121,7 @@ class TestParallelizationExecutors:
         reference = np.mean(video[:3], axis=0)
 
         # Configure for multiprocessing
-        config = RegistrationConfig(parallelization='multiprocessing3d', n_jobs=2)
+        config = RegistrationConfig(parallelization="multiprocessing3d", n_jobs=2)
         options = OFOptions(quality_setting="fast")
 
         # Setup for array processing
@@ -127,7 +135,7 @@ class TestParallelizationExecutors:
         compensator = BatchMotionCorrector(options, config)
 
         # Verify multiprocessing executor is used
-        assert compensator.executor.__class__.__name__ == 'Multiprocessing3DExecutor'
+        assert compensator.executor.__class__.__name__ == "Multiprocessing3DExecutor"
 
         # Run
         compensator.run()
@@ -142,7 +150,7 @@ class TestParallelizationExecutors:
 
     def test_executor_consistency(self):
         """Test that all 3D executors produce consistent results."""
-        available = RuntimeContext.get('available_parallelization', set())
+        available = RuntimeContext.get("available_parallelization", set())
 
         # Create 3D test data
         T, Z, Y, X, C = 8, 6, 12, 12, 2
@@ -153,16 +161,12 @@ class TestParallelizationExecutors:
         results = {}
 
         for executor_name in available:
-            if not executor_name.endswith('3d'):
+            if not executor_name.endswith("3d"):
                 continue  # Skip non-3D executors
 
             # Configure
             config = RegistrationConfig(parallelization=executor_name, n_jobs=2)
-            options = OFOptions(
-                quality_setting="fast",
-                levels=2,
-                iterations=5
-            )
+            options = OFOptions(quality_setting="fast", levels=2, iterations=5)
 
             # Setup for array processing
             options.input_file = video.copy()  # Copy to avoid side effects
@@ -185,8 +189,11 @@ class TestParallelizationExecutors:
             reference_result = list(results.values())[0]
             for name, result in results.items():
                 np.testing.assert_allclose(
-                    result, reference_result, rtol=1e-5, atol=1e-6,
-                    err_msg=f"Results from {name} differ from reference"
+                    result,
+                    reference_result,
+                    rtol=1e-5,
+                    atol=1e-6,
+                    err_msg=f"Results from {name} differ from reference",
                 )
 
 
@@ -208,7 +215,9 @@ class TestProgressCallbacks:
 
         # Run with callback
         options = OFOptions(quality_setting="fast", buffer_size=5)
-        registered, flow = compensate_arr_3D(video, reference, options, progress_callback)
+        registered, flow = compensate_arr_3D(
+            video, reference, options, progress_callback
+        )
 
         # Verify callback was called
         assert len(progress_calls) > 0, "Progress callback was not called"
@@ -216,17 +225,23 @@ class TestProgressCallbacks:
         # Check final progress
         final_current, final_total = progress_calls[-1]
         actual_frames_processed = registered.shape[0]
-        assert final_current == final_total, f"Final progress {final_current} != final_total {final_total}"
-        assert final_current == actual_frames_processed, f"Progress {final_current} != actual frames {actual_frames_processed}"
+        assert (
+            final_current == final_total
+        ), f"Final progress {final_current} != final_total {final_total}"
+        assert (
+            final_current == actual_frames_processed
+        ), f"Progress {final_current} != actual frames {actual_frames_processed}"
         assert final_total == T, f"Total frames {final_total} != input frames {T}"
 
         # Check monotonic increase
         for i in range(1, len(progress_calls)):
-            assert progress_calls[i][0] >= progress_calls[i-1][0], "Progress should increase"
+            assert (
+                progress_calls[i][0] >= progress_calls[i - 1][0]
+            ), "Progress should increase"
 
     def test_progress_with_different_executors(self):
         """Test progress callbacks work with each 3D executor type."""
-        available = RuntimeContext.get('available_parallelization', set())
+        available = RuntimeContext.get("available_parallelization", set())
 
         # Create 3D test data
         T, Z, Y, X, C = 20, 6, 12, 12, 2
@@ -234,7 +249,7 @@ class TestProgressCallbacks:
         reference = np.mean(video[:3], axis=0)
 
         for executor_name in available:
-            if not executor_name.endswith('3d'):
+            if not executor_name.endswith("3d"):
                 continue  # Skip non-3D executors
 
             progress_calls = []
@@ -246,7 +261,7 @@ class TestProgressCallbacks:
             config = RegistrationConfig(
                 parallelization=executor_name,
                 n_jobs=2,
-                batch_size=5  # Small batches for more updates
+                batch_size=5,  # Small batches for more updates
             )
             options = OFOptions(quality_setting="fast", buffer_size=5)
 
@@ -269,10 +284,12 @@ class TestProgressCallbacks:
 
             # Check that final progress matches total - the actual processed frames may differ from input
             final_current, final_total = progress_calls[-1]
-            assert final_current == final_total, f"Wrong final count for {executor_name}: {final_current} != {final_total}"
+            assert (
+                final_current == final_total
+            ), f"Wrong final count for {executor_name}: {final_current} != {final_total}"
 
             # Different executors have different update patterns
-            if executor_name in ['sequential3d', 'threading3d']:
+            if executor_name in ["sequential3d", "threading3d"]:
                 # Frame-by-frame updates possible
                 print(f"{executor_name}: {len(progress_calls)} progress updates")
             else:  # multiprocessing3d
@@ -329,7 +346,9 @@ class TestProgressCallbacks:
 
         # Third should end at 100%
         final_percent = calls3[-1]
-        assert abs(final_percent - 100.0) < 0.01, f"Final progress should be 100%, got {final_percent}%"
+        assert (
+            abs(final_percent - 100.0) < 0.01
+        ), f"Final progress should be 100%, got {final_percent}%"
 
     def test_callback_exception_handling(self):
         """Test that exceptions in callbacks don't break 3D processing."""
@@ -373,7 +392,9 @@ class TestProgressCallbacks:
 
         # Check that processing completed correctly
         final_current, final_total = good_calls[-1]
-        assert final_current == final_total, f"Processing should complete: {final_current} != {final_total}"
+        assert (
+            final_current == final_total
+        ), f"Processing should complete: {final_current} != {final_total}"
 
         # Get results to verify processing completed
         registered = compensator.video_writer.get_array()
@@ -396,11 +417,14 @@ class TestProgressCallbacks:
 
         # Time with callback
         call_count = [0]
+
         def progress_callback(current, total):
             call_count[0] += 1
 
         start = time.time()
-        registered2, flow2 = compensate_arr_3D(video, reference, options, progress_callback)
+        registered2, flow2 = compensate_arr_3D(
+            video, reference, options, progress_callback
+        )
         time_with = time.time() - start
 
         print(f"Time without callback: {time_without:.3f}s")

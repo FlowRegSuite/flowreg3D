@@ -60,15 +60,37 @@ def nonlinearity_smoothness_2d(psi_smooth, u, du, v, dv, m, n, a, hx, hy):
 
     for i in range(n):
         for j in range(m):
-            tmp = ux[j, i] * ux[j, i] + uy[j, i] * uy[j, i] + vx[j, i] * vx[j, i] + vy[j, i] * vy[j, i]
+            tmp = (
+                ux[j, i] * ux[j, i]
+                + uy[j, i] * uy[j, i]
+                + vx[j, i] * vx[j, i]
+                + vy[j, i] * vy[j, i]
+            )
             if tmp < 0.0:
                 tmp = 0.0
             psi_smooth[j, i] = a * (tmp + eps) ** (a - 1.0)
 
 
 @njit(fastmath=True, cache=True)
-def compute_flow(J11, J22, J33, J12, J13, J23, weight, u, v, alpha_x, alpha_y, iterations, update_lag, a_data, a_smooth,
-        hx, hy):
+def compute_flow(
+    J11,
+    J22,
+    J33,
+    J12,
+    J13,
+    J23,
+    weight,
+    u,
+    v,
+    alpha_x,
+    alpha_y,
+    iterations,
+    update_lag,
+    a_data,
+    a_smooth,
+    hx,
+    hy,
+):
     m, n, n_channels = J11.shape
     du = np.zeros((m, n))
     dv = np.zeros((m, n))
@@ -84,15 +106,23 @@ def compute_flow(J11, J22, J33, J12, J13, J23, weight, u, v, alpha_x, alpha_y, i
             for k in range(n_channels):
                 for i in range(n):
                     for j in range(m):
-                        val = (J11[j, i, k] * du[j, i] * du[j, i] + J22[j, i, k] * dv[j, i] * dv[j, i] + J23[j, i, k] *
-                               dv[j, i] + 2.0 * J12[j, i, k] * du[j, i] * dv[j, i] + 2.0 * J13[j, i, k] * du[j, i] +
-                               J23[j, i, k] * dv[j, i] + J33[j, i, k])
+                        val = (
+                            J11[j, i, k] * du[j, i] * du[j, i]
+                            + J22[j, i, k] * dv[j, i] * dv[j, i]
+                            + J23[j, i, k] * dv[j, i]
+                            + 2.0 * J12[j, i, k] * du[j, i] * dv[j, i]
+                            + 2.0 * J13[j, i, k] * du[j, i]
+                            + J23[j, i, k] * dv[j, i]
+                            + J33[j, i, k]
+                        )
                         if val < 0.0:
                             val = 0.0
                         psi[j, i, k] = a_data[k] * (val + 0.00001) ** (a_data[k] - 1.0)
 
             if a_smooth != 1.0:
-                nonlinearity_smoothness_2d(psi_smooth, u, du, v, dv, m, n, a_smooth, hx, hy)
+                nonlinearity_smoothness_2d(
+                    psi_smooth, u, du, v, dv, m, n, a_smooth, hx, hy
+                )
             else:
                 for i in range(n):
                     for j in range(m):
@@ -119,25 +149,41 @@ def compute_flow(J11, J22, J33, J12, J13, J23, weight, u, v, alpha_x, alpha_y, i
                 up = (j - 1, i)
 
                 if a_smooth != 1.0:
-                    tmp = 0.5 * (psi_smooth[j, i] + psi_smooth[left]) * (alpha[0] / (hx * hx))
+                    tmp = (
+                        0.5
+                        * (psi_smooth[j, i] + psi_smooth[left])
+                        * (alpha[0] / (hx * hx))
+                    )
                     num_u += tmp * (u[left] + du[left] - u[j, i])
                     num_v += tmp * (v[left] + dv[left] - v[j, i])
                     denom_u += tmp
                     denom_v += tmp
 
-                    tmp = 0.5 * (psi_smooth[j, i] + psi_smooth[right]) * (alpha[0] / (hx * hx))
+                    tmp = (
+                        0.5
+                        * (psi_smooth[j, i] + psi_smooth[right])
+                        * (alpha[0] / (hx * hx))
+                    )
                     num_u += tmp * (u[right] + du[right] - u[j, i])
                     num_v += tmp * (v[right] + dv[right] - v[j, i])
                     denom_u += tmp
                     denom_v += tmp
 
-                    tmp = 0.5 * (psi_smooth[j, i] + psi_smooth[down]) * (alpha[1] / (hy * hy))
+                    tmp = (
+                        0.5
+                        * (psi_smooth[j, i] + psi_smooth[down])
+                        * (alpha[1] / (hy * hy))
+                    )
                     num_u += tmp * (u[down] + du[down] - u[j, i])
                     num_v += tmp * (v[down] + dv[down] - v[j, i])
                     denom_u += tmp
                     denom_v += tmp
 
-                    tmp = 0.5 * (psi_smooth[j, i] + psi_smooth[up]) * (alpha[1] / (hy * hy))
+                    tmp = (
+                        0.5
+                        * (psi_smooth[j, i] + psi_smooth[up])
+                        * (alpha[1] / (hy * hy))
+                    )
                     num_u += tmp * (u[up] + du[up] - u[j, i])
                     num_v += tmp * (v[up] + dv[up] - v[j, i])
                     denom_u += tmp
@@ -168,7 +214,11 @@ def compute_flow(J11, J22, J33, J12, J13, J23, weight, u, v, alpha_x, alpha_y, i
                     denom_v += tmp
 
                 for k in range(n_channels):
-                    val_u = weight[j, i, k] * psi[j, i, k] * (J13[j, i, k] + J12[j, i, k] * dv[j, i])
+                    val_u = (
+                        weight[j, i, k]
+                        * psi[j, i, k]
+                        * (J13[j, i, k] + J12[j, i, k] * dv[j, i])
+                    )
                     num_u -= val_u
                     denom_u += weight[j, i, k] * psi[j, i, k] * J11[j, i, k]
                     denom_v += weight[j, i, k] * psi[j, i, k] * J22[j, i, k]
@@ -178,7 +228,11 @@ def compute_flow(J11, J22, J33, J12, J13, J23, weight, u, v, alpha_x, alpha_y, i
 
                 num_v2 = num_v
                 for k in range(n_channels):
-                    num_v2 -= weight[j, i, k] * psi[j, i, k] * (J23[j, i, k] + J12[j, i, k] * du[j, i])
+                    num_v2 -= (
+                        weight[j, i, k]
+                        * psi[j, i, k]
+                        * (J23[j, i, k] + J12[j, i, k] * du[j, i])
+                    )
 
                 dv_kp1 = num_v2 / denom_v if denom_v != 0.0 else 0.0
                 dv[j, i] = (1.0 - OMEGA) * dv[j, i] + OMEGA * dv_kp1
@@ -241,16 +295,49 @@ def nonlinearity_smoothness_3d(psi, u, du, v, dv, w, dw, p, m, n, a, hx, hy, hz)
     for k in range(p):
         for j in range(m):
             for i in range(n):
-                g = ux[k, j, i] * ux[k, j, i] + uy[k, j, i] * uy[k, j, i] + uz[k, j, i] * uz[k, j, i] + vx[k, j, i] * \
-                    vx[k, j, i] + vy[k, j, i] * vy[k, j, i] + vz[k, j, i] * vz[k, j, i] + wx[k, j, i] * wx[k, j, i] + \
-                    wy[k, j, i] * wy[k, j, i] + wz[k, j, i] * wz[k, j, i]
-                if g < 0.0: g = 0.0
+                g = (
+                    ux[k, j, i] * ux[k, j, i]
+                    + uy[k, j, i] * uy[k, j, i]
+                    + uz[k, j, i] * uz[k, j, i]
+                    + vx[k, j, i] * vx[k, j, i]
+                    + vy[k, j, i] * vy[k, j, i]
+                    + vz[k, j, i] * vz[k, j, i]
+                    + wx[k, j, i] * wx[k, j, i]
+                    + wy[k, j, i] * wy[k, j, i]
+                    + wz[k, j, i] * wz[k, j, i]
+                )
+                if g < 0.0:
+                    g = 0.0
                 psi[k, j, i] = a * (g + eps) ** (a - 1.0)
 
 
 @njit(fastmath=True, cache=True)
-def compute_flow_3d(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, weight, u, v, w, alpha_x, alpha_y, alpha_z,
-        iterations, update_lag, a_data, a_smooth, hx, hy, hz):
+def compute_flow_3d(
+    J11,
+    J22,
+    J33,
+    J44,
+    J12,
+    J13,
+    J23,
+    J14,
+    J24,
+    J34,
+    weight,
+    u,
+    v,
+    w,
+    alpha_x,
+    alpha_y,
+    alpha_z,
+    iterations,
+    update_lag,
+    a_data,
+    a_smooth,
+    hx,
+    hy,
+    hz,
+):
     p, m, n, C = J11.shape
     du = np.zeros((p, m, n))
     dv = np.zeros((p, m, n))
@@ -263,7 +350,9 @@ def compute_flow_3d(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, weight, u,
 
     for it in range(iterations):
         if a_smooth != 1.0:
-            nonlinearity_smoothness_3d(psi_smooth, u, du, v, dv, w, dw, p, m, n, a_smooth, hx, hy, hz)
+            nonlinearity_smoothness_3d(
+                psi_smooth, u, du, v, dv, w, dw, p, m, n, a_smooth, hx, hy, hz
+            )
         if it % update_lag == 0:
             for c in range(C):
                 adc = a_data[c]
@@ -271,13 +360,20 @@ def compute_flow_3d(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, weight, u,
                     for k in range(p):
                         for j in range(m):
                             for i in range(n):
-                                val = (J11[k, j, i, c] * du[k, j, i] * du[k, j, i] + J22[k, j, i, c] * dv[k, j, i] * dv[
-                                    k, j, i] + J33[k, j, i, c] * dw[k, j, i] * dw[k, j, i] + 2.0 * J12[k, j, i, c] * du[
-                                           k, j, i] * dv[k, j, i] + 2.0 * J13[k, j, i, c] * du[k, j, i] * dw[
-                                           k, j, i] + 2.0 * J23[k, j, i, c] * dv[k, j, i] * dw[k, j, i] + 2.0 * J14[
-                                           k, j, i, c] * du[k, j, i] + 2.0 * J24[k, j, i, c] * dv[k, j, i] + 2.0 * J34[
-                                           k, j, i, c] * dw[k, j, i] + J44[k, j, i, c])
-                                if val < 0.0: val = 0.0
+                                val = (
+                                    J11[k, j, i, c] * du[k, j, i] * du[k, j, i]
+                                    + J22[k, j, i, c] * dv[k, j, i] * dv[k, j, i]
+                                    + J33[k, j, i, c] * dw[k, j, i] * dw[k, j, i]
+                                    + 2.0 * J12[k, j, i, c] * du[k, j, i] * dv[k, j, i]
+                                    + 2.0 * J13[k, j, i, c] * du[k, j, i] * dw[k, j, i]
+                                    + 2.0 * J23[k, j, i, c] * dv[k, j, i] * dw[k, j, i]
+                                    + 2.0 * J14[k, j, i, c] * du[k, j, i]
+                                    + 2.0 * J24[k, j, i, c] * dv[k, j, i]
+                                    + 2.0 * J34[k, j, i, c] * dw[k, j, i]
+                                    + J44[k, j, i, c]
+                                )
+                                if val < 0.0:
+                                    val = 0.0
                                 psi[k, j, i, c] = adc * (val + eps) ** (adc - 1.0)
 
         set_boundary_3d(du)
@@ -302,7 +398,11 @@ def compute_flow_3d(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, weight, u,
                     ip = (k, j, i + 1)
 
                     if a_smooth != 1.0:
-                        tmp = 0.5 * (psi_smooth[k, j, i] + psi_smooth[km]) * (alpha[2] / (hz * hz))
+                        tmp = (
+                            0.5
+                            * (psi_smooth[k, j, i] + psi_smooth[km])
+                            * (alpha[2] / (hz * hz))
+                        )
                         num_u += tmp * (u[km] + du[km] - u[k, j, i])
                         denom_u += tmp
                         num_v += tmp * (v[km] + dv[km] - v[k, j, i])
@@ -310,7 +410,11 @@ def compute_flow_3d(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, weight, u,
                         num_w += tmp * (w[km] + dw[km] - w[k, j, i])
                         denom_w += tmp
 
-                        tmp = 0.5 * (psi_smooth[k, j, i] + psi_smooth[kp]) * (alpha[2] / (hz * hz))
+                        tmp = (
+                            0.5
+                            * (psi_smooth[k, j, i] + psi_smooth[kp])
+                            * (alpha[2] / (hz * hz))
+                        )
                         num_u += tmp * (u[kp] + du[kp] - u[k, j, i])
                         denom_u += tmp
                         num_v += tmp * (v[kp] + dv[kp] - v[k, j, i])
@@ -318,7 +422,11 @@ def compute_flow_3d(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, weight, u,
                         num_w += tmp * (w[kp] + dw[kp] - w[k, j, i])
                         denom_w += tmp
 
-                        tmp = 0.5 * (psi_smooth[k, j, i] + psi_smooth[jm]) * (alpha[1] / (hy * hy))
+                        tmp = (
+                            0.5
+                            * (psi_smooth[k, j, i] + psi_smooth[jm])
+                            * (alpha[1] / (hy * hy))
+                        )
                         num_u += tmp * (u[jm] + du[jm] - u[k, j, i])
                         denom_u += tmp
                         num_v += tmp * (v[jm] + dv[jm] - v[k, j, i])
@@ -326,7 +434,11 @@ def compute_flow_3d(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, weight, u,
                         num_w += tmp * (w[jm] + dw[jm] - w[k, j, i])
                         denom_w += tmp
 
-                        tmp = 0.5 * (psi_smooth[k, j, i] + psi_smooth[jp]) * (alpha[1] / (hy * hy))
+                        tmp = (
+                            0.5
+                            * (psi_smooth[k, j, i] + psi_smooth[jp])
+                            * (alpha[1] / (hy * hy))
+                        )
                         num_u += tmp * (u[jp] + du[jp] - u[k, j, i])
                         denom_u += tmp
                         num_v += tmp * (v[jp] + dv[jp] - v[k, j, i])
@@ -334,7 +446,11 @@ def compute_flow_3d(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, weight, u,
                         num_w += tmp * (w[jp] + dw[jp] - w[k, j, i])
                         denom_w += tmp
 
-                        tmp = 0.5 * (psi_smooth[k, j, i] + psi_smooth[im]) * (alpha[0] / (hx * hx))
+                        tmp = (
+                            0.5
+                            * (psi_smooth[k, j, i] + psi_smooth[im])
+                            * (alpha[0] / (hx * hx))
+                        )
                         num_u += tmp * (u[im] + du[im] - u[k, j, i])
                         denom_u += tmp
                         num_v += tmp * (v[im] + dv[im] - v[k, j, i])
@@ -342,7 +458,11 @@ def compute_flow_3d(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, weight, u,
                         num_w += tmp * (w[im] + dw[im] - w[k, j, i])
                         denom_w += tmp
 
-                        tmp = 0.5 * (psi_smooth[k, j, i] + psi_smooth[ip]) * (alpha[0] / (hx * hx))
+                        tmp = (
+                            0.5
+                            * (psi_smooth[k, j, i] + psi_smooth[ip])
+                            * (alpha[0] / (hx * hx))
+                        )
                         num_u += tmp * (u[ip] + du[ip] - u[k, j, i])
                         denom_u += tmp
                         num_v += tmp * (v[ip] + dv[ip] - v[k, j, i])
@@ -374,7 +494,8 @@ def compute_flow_3d(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, weight, u,
 
                     for c in range(C):
                         ww = weight[k, j, i, c]
-                        if a_data[c] != 1.0: ww *= psi[k, j, i, c]
+                        if a_data[c] != 1.0:
+                            ww *= psi[k, j, i, c]
                         denom_u += ww * J11[k, j, i, c]
                         denom_v += ww * J22[k, j, i, c]
                         denom_w += ww * J33[k, j, i, c]
@@ -382,24 +503,39 @@ def compute_flow_3d(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, weight, u,
                     num_u2 = num_u
                     for c in range(C):
                         ww = weight[k, j, i, c]
-                        if a_data[c] != 1.0: ww *= psi[k, j, i, c]
-                        num_u2 -= ww * (J14[k, j, i, c] + J12[k, j, i, c] * dv[k, j, i] + J13[k, j, i, c] * dw[k, j, i])
+                        if a_data[c] != 1.0:
+                            ww *= psi[k, j, i, c]
+                        num_u2 -= ww * (
+                            J14[k, j, i, c]
+                            + J12[k, j, i, c] * dv[k, j, i]
+                            + J13[k, j, i, c] * dw[k, j, i]
+                        )
                     du_kp1 = num_u2 / denom_u if denom_u != 0.0 else 0.0
                     du[k, j, i] = (1.0 - OMEGA) * du[k, j, i] + OMEGA * du_kp1
 
                     num_v2 = num_v
                     for c in range(C):
                         ww = weight[k, j, i, c]
-                        if a_data[c] != 1.0: ww *= psi[k, j, i, c]
-                        num_v2 -= ww * (J24[k, j, i, c] + J12[k, j, i, c] * du[k, j, i] + J23[k, j, i, c] * dw[k, j, i])
+                        if a_data[c] != 1.0:
+                            ww *= psi[k, j, i, c]
+                        num_v2 -= ww * (
+                            J24[k, j, i, c]
+                            + J12[k, j, i, c] * du[k, j, i]
+                            + J23[k, j, i, c] * dw[k, j, i]
+                        )
                     dv_kp1 = num_v2 / denom_v if denom_v != 0.0 else 0.0
                     dv[k, j, i] = (1.0 - OMEGA) * dv[k, j, i] + OMEGA * dv_kp1
 
                     num_w2 = num_w
                     for c in range(C):
                         ww = weight[k, j, i, c]
-                        if a_data[c] != 1.0: ww *= psi[k, j, i, c]
-                        num_w2 -= ww * (J34[k, j, i, c] + J13[k, j, i, c] * du[k, j, i] + J23[k, j, i, c] * dv[k, j, i])
+                        if a_data[c] != 1.0:
+                            ww *= psi[k, j, i, c]
+                        num_w2 -= ww * (
+                            J34[k, j, i, c]
+                            + J13[k, j, i, c] * du[k, j, i]
+                            + J23[k, j, i, c] * dv[k, j, i]
+                        )
                     dw_kp1 = num_w2 / denom_w if denom_w != 0.0 else 0.0
                     dw[k, j, i] = (1.0 - OMEGA) * dw[k, j, i] + OMEGA * dw_kp1
 

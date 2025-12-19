@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import imageio
 import napari
@@ -60,21 +60,46 @@ SNAPSHOTS_PER_COMBINATION = 10
 
 CAMERA_PRESETS: Sequence[Dict[str, float]] = (
     {"name": "front", "elevation": 0.0, "azimuth": 0.0, "roll": 0.0, "zoom": 0.7},
-    {"name": "oblique_pos", "elevation": 25.0, "azimuth": 35.0, "roll": 0.0, "zoom": 0.65},
-    {"name": "oblique_neg", "elevation": -25.0, "azimuth": -35.0, "roll": 0.0, "zoom": 0.65},
+    {
+        "name": "oblique_pos",
+        "elevation": 25.0,
+        "azimuth": 35.0,
+        "roll": 0.0,
+        "zoom": 0.65,
+    },
+    {
+        "name": "oblique_neg",
+        "elevation": -25.0,
+        "azimuth": -35.0,
+        "roll": 0.0,
+        "zoom": 0.65,
+    },
     {"name": "top", "elevation": 90.0, "azimuth": 0.0, "roll": 0.0, "zoom": 0.75},
     {"name": "bottom", "elevation": -90.0, "azimuth": 0.0, "roll": 0.0, "zoom": 0.75},
     {"name": "left", "elevation": 0.0, "azimuth": 90.0, "roll": 0.0, "zoom": 0.7},
     {"name": "right", "elevation": 0.0, "azimuth": -90.0, "roll": 0.0, "zoom": 0.7},
     {"name": "roll_pos", "elevation": 20.0, "azimuth": 30.0, "roll": 20.0, "zoom": 0.6},
-    {"name": "roll_neg", "elevation": -20.0, "azimuth": -30.0, "roll": -20.0, "zoom": 0.6},
-    {"name": "tight_front", "elevation": 10.0, "azimuth": 0.0, "roll": 0.0, "zoom": 0.85},
+    {
+        "name": "roll_neg",
+        "elevation": -20.0,
+        "azimuth": -30.0,
+        "roll": -20.0,
+        "zoom": 0.6,
+    },
+    {
+        "name": "tight_front",
+        "elevation": 10.0,
+        "azimuth": 0.0,
+        "roll": 0.0,
+        "zoom": 0.85,
+    },
 )
 
 
 # -------------------------------------------------------------------------
 # Volume preparation & synthetic motion
 # -------------------------------------------------------------------------
+
 
 def process_3d_stack(video_data: np.ndarray) -> np.ndarray:
     """
@@ -90,7 +115,9 @@ def process_3d_stack(video_data: np.ndarray) -> np.ndarray:
 
     resize_factor = 1.0
     print(f"  Resizing to {100 * resize_factor:.0f}%...")
-    zoom_factors = (1.0, resize_factor, resize_factor) + ((1.0,) if video.ndim == 4 else ())
+    zoom_factors = (1.0, resize_factor, resize_factor) + (
+        (1.0,) if video.ndim == 4 else ()
+    )
     video_resized = zoom(video, zoom_factors, order=1)
     print(f"  After resize: {video_resized.shape}")
 
@@ -108,7 +135,9 @@ def process_3d_stack(video_data: np.ndarray) -> np.ndarray:
     vmin = video_cropped.min()
     vmax = video_cropped.max()
     print(f"  Normalizing with range [{vmin:.4f}, {vmax:.4f}]")
-    video_normalized = (video_cropped - vmin) / (vmax - vmin) if vmax > vmin else video_cropped
+    video_normalized = (
+        (video_cropped - vmin) / (vmax - vmin) if vmax > vmin else video_cropped
+    )
 
     print(f"  Final shape: {video_normalized.shape}")
     print(
@@ -201,7 +230,9 @@ def warp_volume_splat3d(volume: np.ndarray, flow: np.ndarray) -> np.ndarray:
         return (out / den).reshape(Z, H, W).astype(values.dtype)
 
     if volume.ndim == 4:
-        return np.stack([splat(volume[..., c]) for c in range(volume.shape[3])], axis=-1)
+        return np.stack(
+            [splat(volume[..., c]) for c in range(volume.shape[3])], axis=-1
+        )
     return splat(volume)
 
 
@@ -232,7 +263,9 @@ def warp_volume_pc3d(volume: np.ndarray, flow: np.ndarray) -> np.ndarray:
 
     tp = np.column_stack([grid_x.ravel(), grid_y.ravel(), grid_z.ravel()])
     sp = np.column_stack([target_x.ravel(), target_y.ravel(), target_z.ravel()])
-    return griddata(sp, volume.ravel(), tp, method="linear", fill_value=0).reshape(Z, H, W)
+    return griddata(sp, volume.ravel(), tp, method="linear", fill_value=0).reshape(
+        Z, H, W
+    )
 
 
 def create_displaced_frame_with_generator(
@@ -289,6 +322,7 @@ def evaluate_flow_accuracy(
 # -------------------------------------------------------------------------
 # FlowReg3D solvers
 # -------------------------------------------------------------------------
+
 
 def compute_flowreg3d_flow(
     frame1: np.ndarray, frame2: np.ndarray, flow_params: Dict
@@ -372,6 +406,7 @@ def _print_flow_stats(flow: np.ndarray) -> None:
 # -------------------------------------------------------------------------
 # VolRAFT tiling + inference helpers
 # -------------------------------------------------------------------------
+
 
 def _build_foreground_mask(volume: np.ndarray, percentile: float = 10.0) -> np.ndarray:
     vol = volume.squeeze(-1)
@@ -490,11 +525,16 @@ def run_volraft_inference(
     )
     margin_after = tuple(
         max(patch_dim - flow_dim - before, 0)
-        for patch_dim, flow_dim, before in zip(patch_spatial, flow_spatial, margin_before)
+        for patch_dim, flow_dim, before in zip(
+            patch_spatial, flow_spatial, margin_before
+        )
     )
     gaussian_window = _gaussian_window_3d(flow_spatial)
     default_full_margin = tuple(max(flow_dim // 4, 2) for flow_dim in flow_spatial)
-    half_margin = tuple(min(m // 2, flow_dim // 2) for m, flow_dim in zip(default_full_margin, flow_spatial))
+    half_margin = tuple(
+        min(m // 2, flow_dim // 2)
+        for m, flow_dim in zip(default_full_margin, flow_spatial)
+    )
     core_slices = []
     for dim, hm in zip(flow_spatial, half_margin):
         start = hm
@@ -507,9 +547,7 @@ def run_volraft_inference(
 
     overlap_cap = max(1, min(int(num_overlaps), min(flow_spatial)))
     stride = tuple(max(dim // overlap_cap, 1) for dim in flow_spatial)
-    print(
-        f"  Tile stride set to {stride} voxels (~1/{overlap_cap} of flow size)."
-    )
+    print(f"  Tile stride set to {stride} voxels (~1/{overlap_cap} of flow size).")
 
     mask = (
         np.ones(original_shape, dtype=bool)
@@ -570,10 +608,18 @@ def run_volraft_inference(
                 if not np.any(patch_mask):
                     continue
 
-                ref_patch = np.ascontiguousarray(ref[z_patch_slice, y_patch_slice, x_patch_slice, :])
-                mov_patch = np.ascontiguousarray(mov[z_patch_slice, y_patch_slice, x_patch_slice, :])
-                ref_tensor = torch.from_numpy(np.moveaxis(ref_patch, -1, 0)[None]).to(device)
-                mov_tensor = torch.from_numpy(np.moveaxis(mov_patch, -1, 0)[None]).to(device)
+                ref_patch = np.ascontiguousarray(
+                    ref[z_patch_slice, y_patch_slice, x_patch_slice, :]
+                )
+                mov_patch = np.ascontiguousarray(
+                    mov[z_patch_slice, y_patch_slice, x_patch_slice, :]
+                )
+                ref_tensor = torch.from_numpy(np.moveaxis(ref_patch, -1, 0)[None]).to(
+                    device
+                )
+                mov_tensor = torch.from_numpy(np.moveaxis(mov_patch, -1, 0)[None]).to(
+                    device
+                )
 
                 with torch.no_grad():
                     flow_pred = model.forward(ref_tensor, mov_tensor)
@@ -581,7 +627,9 @@ def run_volraft_inference(
                         flow_pred = flow_pred[-1]
 
                 flow_np_raw = flow_pred.squeeze(0).detach().cpu().numpy()
-                flow_np_raw = np.moveaxis(flow_np_raw, 0, -1).astype(np.float32, copy=False)
+                flow_np_raw = np.moveaxis(flow_np_raw, 0, -1).astype(
+                    np.float32, copy=False
+                )
 
                 flow_np = np.empty_like(flow_np_raw)
                 flow_np[..., 0] = flow_np_raw[..., 2]  # dx
@@ -600,7 +648,9 @@ def run_volraft_inference(
                 processed_tiles += 1
 
     if processed_tiles == 0:
-        raise RuntimeError("Foreground mask eliminated all patches; cannot run VolRAFT.")
+        raise RuntimeError(
+            "Foreground mask eliminated all patches; cannot run VolRAFT."
+        )
     print(f"  Processed {processed_tiles} / {total_tiles} tiles.")
 
     valid = weight_accum > 0
@@ -608,7 +658,9 @@ def run_volraft_inference(
     flow_accum[~valid] = 0
 
     if any(pad != (0, 0) for pad in padding):
-        slices = tuple(slice(pad[0], pad[0] + orig) for pad, orig in zip(padding, original_shape))
+        slices = tuple(
+            slice(pad[0], pad[0] + orig) for pad, orig in zip(padding, original_shape)
+        )
         flow_accum = flow_accum[slices]
         mask = mask[slices]
 
@@ -619,6 +671,7 @@ def run_volraft_inference(
 # -------------------------------------------------------------------------
 # Napari visualization + screenshot automation
 # -------------------------------------------------------------------------
+
 
 def _add_red_green_layers(
     viewer: napari.Viewer,
@@ -685,6 +738,7 @@ def capture_perspective_gallery(
 # Main workflow
 # -------------------------------------------------------------------------
 
+
 def main():
     """Run FlowReg3D + VolRAFT motion correction and visualization."""
     print("=" * 60)
@@ -715,7 +769,9 @@ def main():
 
     print(f"\nLoaded 3D stack shape: {video_3d.shape}")
     processed = process_3d_stack(video_3d)
-    displaced, flow_gt = create_displaced_frame_with_generator(processed, generator_type="high_disp")
+    displaced, flow_gt = create_displaced_frame_with_generator(
+        processed, generator_type="high_disp"
+    )
 
     boundary = 10
     if processed.ndim == 4:
@@ -743,9 +799,13 @@ def main():
     }
 
     if FLOWREG_MODE == "torch":
-        flowreg_flow = compute_flowreg3d_flow_torch(original_cropped, displaced, flowreg_params)
+        flowreg_flow = compute_flowreg3d_flow_torch(
+            original_cropped, displaced, flowreg_params
+        )
     else:
-        flowreg_flow = compute_flowreg3d_flow(original_cropped, displaced, flowreg_params)
+        flowreg_flow = compute_flowreg3d_flow(
+            original_cropped, displaced, flowreg_params
+        )
 
     print("\nApplying FlowReg3D motion correction...")
     flowreg_corrected = imregister_wrapper(
@@ -785,9 +845,13 @@ def main():
         elapsed = time.perf_counter() - t0
         print(f"  VolRAFT flow computed in {elapsed:.2f}s.")
     elif VOLRAFT_MODE == "torch":
-        volraft_flow = compute_flowreg3d_flow_torch(original_cropped, displaced, flowreg_params)
+        volraft_flow = compute_flowreg3d_flow_torch(
+            original_cropped, displaced, flowreg_params
+        )
     else:
-        raise ValueError(f"Unsupported VOLRAFT_MODE '{VOLRAFT_MODE}' (use 'volraft' or 'torch').")
+        raise ValueError(
+            f"Unsupported VOLRAFT_MODE '{VOLRAFT_MODE}' (use 'volraft' or 'torch')."
+        )
 
     print("\nApplying VolRAFT motion correction...")
     volraft_corrected = imregister_wrapper(

@@ -8,11 +8,11 @@ import torch
 
 from flowreg3d.util.resize_util_3D import (
     imresize_fused_gauss_cubic3D as imresize_cpu,
-    imresize2d_gauss_cubic as imresize2d_cpu
+    imresize2d_gauss_cubic as imresize2d_cpu,
 )
 from flowreg3d.util.torch.resize_util_3D import (
     imresize_fused_gauss_cubic3D as imresize_torch,
-    imresize2d_gauss_cubic as imresize2d_torch
+    imresize2d_gauss_cubic as imresize2d_torch,
 )
 
 
@@ -145,10 +145,14 @@ class TestResizeUtil3D:
         out_shape = (32, 48, 64)
 
         cpu_result = imresize_cpu(data, out_shape, sigma_coeff=0.6, per_axis=False)
-        torch_result = imresize_torch(data_tensor, out_shape, sigma_coeff=0.6, per_axis=False)
+        torch_result = imresize_torch(
+            data_tensor, out_shape, sigma_coeff=0.6, per_axis=False
+        )
 
         assert torch_result.is_cuda
-        np.testing.assert_allclose(cpu_result, torch_result.cpu().numpy(), rtol=1e-5, atol=1e-8)
+        np.testing.assert_allclose(
+            cpu_result, torch_result.cpu().numpy(), rtol=1e-5, atol=1e-8
+        )
 
     def test_resize_cpu_vectorized(self):
         """Test vectorized PyTorch operations on CPU."""
@@ -158,10 +162,14 @@ class TestResizeUtil3D:
         out_shape = (32, 48, 64)
 
         cpu_result = imresize_cpu(data, out_shape, sigma_coeff=0.6, per_axis=False)
-        torch_result = imresize_torch(data_tensor, out_shape, sigma_coeff=0.6, per_axis=False)
+        torch_result = imresize_torch(
+            data_tensor, out_shape, sigma_coeff=0.6, per_axis=False
+        )
 
         assert not torch_result.is_cuda  # Ensure it's on CPU
-        np.testing.assert_allclose(cpu_result, torch_result.cpu().numpy(), rtol=1e-6, atol=1e-9)
+        np.testing.assert_allclose(
+            cpu_result, torch_result.cpu().numpy(), rtol=1e-6, atol=1e-9
+        )
 
     def test_reflection_boundary(self):
         """Test reflection boundary condition handling."""

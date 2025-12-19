@@ -18,8 +18,12 @@ from pyflowreg.util.io.factory import get_video_file_reader
 from scipy.ndimage import zoom, gaussian_filter
 
 from flowreg3d.core.optical_flow_3d import get_displacement, imregister_wrapper
-from flowreg3d.motion_generation.motion_generators import (get_default_3d_generator, get_low_disp_3d_generator,
-                                                           get_test_3d_generator, get_high_disp_3d_generator)
+from flowreg3d.motion_generation.motion_generators import (
+    get_default_3d_generator,
+    get_low_disp_3d_generator,
+    get_test_3d_generator,
+    get_high_disp_3d_generator,
+)
 from flowreg3d.util.random import fix_seed
 
 
@@ -37,7 +41,7 @@ def process_3d_stack(video_data):
     Returns:
         Processed video array
     """
-    print(f"\nProcessing 3D stack...")
+    print("\nProcessing 3D stack...")
     print(f"  Input shape: {video_data.shape}")
 
     # Convert to float32 for processing
@@ -47,7 +51,12 @@ def process_3d_stack(video_data):
     resize_factor = 1
     print(f"  Resizing to {100*resize_factor}%...")
     if video.ndim == 4:  # Has channels
-        zoom_factors = (1.0, resize_factor, resize_factor, 1.0)  # Don't resize time or channels
+        zoom_factors = (
+            1.0,
+            resize_factor,
+            resize_factor,
+            1.0,
+        )  # Don't resize time or channels
     else:
         zoom_factors = (1.0, resize_factor, resize_factor)  # Don't resize time
 
@@ -77,7 +86,9 @@ def process_3d_stack(video_data):
         video_normalized = video_cropped
 
     print(f"  Final shape: {video_normalized.shape}")
-    print(f"  Value range: [{video_normalized.min():.3f}, {video_normalized.max():.3f}]")
+    print(
+        f"  Value range: [{video_normalized.min():.3f}, {video_normalized.max():.3f}]"
+    )
 
     return video_normalized
 
@@ -106,7 +117,7 @@ def warp_volume_bw3d_torch(volume, flow):
     zz = torch.linspace(-1, 1, Z)
     yy = torch.linspace(-1, 1, H)
     xx = torch.linspace(-1, 1, W)
-    Zg, Yg, Xg = torch.meshgrid(zz, yy, xx, indexing='ij')
+    Zg, Yg, Xg = torch.meshgrid(zz, yy, xx, indexing="ij")
 
     # Add normalized flow to grid
     nz = Zg + 2 * f[..., 0] / (Z - 1)
@@ -120,7 +131,9 @@ def warp_volume_bw3d_torch(volume, flow):
     v = v.permute(3, 0, 1, 2)[None]
 
     # Apply backward warping
-    out = torch.nn.functional.grid_sample(v, grid, mode='bilinear', padding_mode='border', align_corners=True)
+    out = torch.nn.functional.grid_sample(
+        v, grid, mode="bilinear", padding_mode="border", align_corners=True
+    )
 
     # Reshape output
     out = out[0].permute(1, 2, 3, 0).numpy()
@@ -140,7 +153,7 @@ def warp_volume_splat3d(volume, flow):
         Warped volume with same shape as input
     """
     Z, H, W = volume.shape[:3]
-    z, y, x = np.meshgrid(np.arange(Z), np.arange(H), np.arange(W), indexing='ij')
+    z, y, x = np.meshgrid(np.arange(Z), np.arange(H), np.arange(W), indexing="ij")
 
     # Target coordinates (flow is [dx, dy, dz])
     tx = (x + flow[..., 0]).ravel()  # dx
@@ -175,15 +188,25 @@ def warp_volume_splat3d(volume, flow):
 
     def accum(values):
         V = values.ravel()
-        idx = lambda zz, yy, xx: (zz * H + yy) * W + xx
+
+        def idx(zz, yy, xx):
+            return (zz * H + yy) * W + xx
+
         N = Z * H * W
         out = np.zeros(N, dtype=np.float64)
         den = np.zeros(N, dtype=np.float64)
 
         # Splat to 8 neighboring voxels
-        for w, zz, yy, xx in [(w000, iz0, iy0, ix0), (w100, iz0, iy0, ix1), (w010, iz0, iy1, ix0),
-                              (w110, iz0, iy1, ix1), (w001, iz1, iy0, ix0), (w101, iz1, iy0, ix1),
-                              (w011, iz1, iy1, ix0), (w111, iz1, iy1, ix1)]:
+        for w, zz, yy, xx in [
+            (w000, iz0, iy0, ix0),
+            (w100, iz0, iy0, ix1),
+            (w010, iz0, iy1, ix0),
+            (w110, iz0, iy1, ix1),
+            (w001, iz1, iy0, ix0),
+            (w101, iz1, iy0, ix1),
+            (w011, iz1, iy1, ix0),
+            (w111, iz1, iy1, ix1),
+        ]:
             idv = idx(zz, yy, xx)
             np.add.at(out, idv, V * w)
             np.add.at(den, idv, w)
@@ -214,8 +237,12 @@ def warp_volume_pc3d(volume, flow):
     Z, H, W = volume.shape[:3]
 
     # Create original grid coordinates
-    grid_z, grid_y, grid_x = np.meshgrid(np.arange(Z, dtype=np.float32), np.arange(H, dtype=np.float32),
-                                         np.arange(W, dtype=np.float32), indexing='ij')
+    grid_z, grid_y, grid_x = np.meshgrid(
+        np.arange(Z, dtype=np.float32),
+        np.arange(H, dtype=np.float32),
+        np.arange(W, dtype=np.float32),
+        indexing="ij",
+    )
 
     # Compute target coordinates (where each pixel moves TO)
     target_x = grid_x + flow[:, :, :, 0]  # dx component
@@ -227,21 +254,36 @@ def warp_volume_pc3d(volume, flow):
         warped = np.zeros_like(volume)
         for c in range(volume.shape[3]):
             # Flatten arrays for griddata
-            source_points = np.column_stack([target_x.flatten(), target_y.flatten(), target_z.flatten()])
+            source_points = np.column_stack(
+                [target_x.flatten(), target_y.flatten(), target_z.flatten()]
+            )
             source_values = volume[:, :, :, c].flatten()
-            target_points = np.column_stack([grid_x.flatten(), grid_y.flatten(), grid_z.flatten()])
+            target_points = np.column_stack(
+                [grid_x.flatten(), grid_y.flatten(), grid_z.flatten()]
+            )
 
             # Use griddata for forward warping (scatter operation)
-            warped[:, :, :, c] = griddata(source_points, source_values, target_points, method='linear',
-                                          fill_value=0).reshape(Z, H, W)
+            warped[:, :, :, c] = griddata(
+                source_points,
+                source_values,
+                target_points,
+                method="linear",
+                fill_value=0,
+            ).reshape(Z, H, W)
     else:
         # Flatten arrays for griddata
-        source_points = np.column_stack([target_x.flatten(), target_y.flatten(), target_z.flatten()])
+        source_points = np.column_stack(
+            [target_x.flatten(), target_y.flatten(), target_z.flatten()]
+        )
         source_values = volume.flatten()
-        target_points = np.column_stack([grid_x.flatten(), grid_y.flatten(), grid_z.flatten()])
+        target_points = np.column_stack(
+            [grid_x.flatten(), grid_y.flatten(), grid_z.flatten()]
+        )
 
         # Use griddata for forward warping (scatter operation)
-        warped = griddata(source_points, source_values, target_points, method='linear', fill_value=0).reshape(Z, H, W)
+        warped = griddata(
+            source_points, source_values, target_points, method="linear", fill_value=0
+        ).reshape(Z, H, W)
 
     return warped
 
@@ -298,17 +340,21 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
 
     # Print flow statistics
     print(f"  Flow field shape: {flow.shape}")
-    print(f"  Flow magnitude stats:")
+    print("  Flow magnitude stats:")
     print(
-        f"    dx: min={flow[:, :, :, 0].min():.2f}, max={flow[:, :, :, 0].max():.2f}, mean={flow[:, :, :, 0].mean():.2f}")
+        f"    dx: min={flow[:, :, :, 0].min():.2f}, max={flow[:, :, :, 0].max():.2f}, mean={flow[:, :, :, 0].mean():.2f}"
+    )
     print(
-        f"    dy: min={flow[:, :, :, 1].min():.2f}, max={flow[:, :, :, 1].max():.2f}, mean={flow[:, :, :, 1].mean():.2f}")
+        f"    dy: min={flow[:, :, :, 1].min():.2f}, max={flow[:, :, :, 1].max():.2f}, mean={flow[:, :, :, 1].mean():.2f}"
+    )
     print(
-        f"    dz: min={flow[:, :, :, 2].min():.2f}, max={flow[:, :, :, 2].max():.2f}, mean={flow[:, :, :, 2].mean():.2f}")
+        f"    dz: min={flow[:, :, :, 2].min():.2f}, max={flow[:, :, :, 2].max():.2f}, mean={flow[:, :, :, 2].mean():.2f}"
+    )
 
-    total_magnitude = np.sqrt(np.sum(flow ** 2, axis=-1))
+    total_magnitude = np.sqrt(np.sum(flow**2, axis=-1))
     print(
-        f"  Total magnitude: min={total_magnitude.min():.2f}, max={total_magnitude.max():.2f}, mean={total_magnitude.mean():.2f}")
+        f"  Total magnitude: min={total_magnitude.min():.2f}, max={total_magnitude.max():.2f}, mean={total_magnitude.mean():.2f}"
+    )
 
     return flow
 
@@ -317,7 +363,10 @@ def compute_3d_optical_flow_torch(frame1, frame2, flow_params):
     import numpy as np
     import torch
 
-    from flowreg3d.util.torch.image_processing_3D import normalize, apply_gaussian_filter
+    from flowreg3d.util.torch.image_processing_3D import (
+        normalize,
+        apply_gaussian_filter,
+    )
     import flowreg3d.core.torch.optical_flow_3d as of3d
 
     # Inputs → float64 torch tensors, ensure (Z,Y,X,C)
@@ -343,13 +392,17 @@ def compute_3d_optical_flow_torch(frame1, frame2, flow_params):
 
     start = time.time()
     with torch.no_grad():
-        flow = of3d.get_displacement(t1n, t2n, **flow_params)  # returns (Z,Y,X,3) float64
-    print(f"  Flow computation time: {time.time() - start:.2f} seconds with torch backend.")
+        flow = of3d.get_displacement(
+            t1n, t2n, **flow_params
+        )  # returns (Z,Y,X,3) float64
+    print(
+        f"  Flow computation time: {time.time() - start:.2f} seconds with torch backend."
+    )
 
     return flow.detach().cpu().numpy().astype(np.float64, copy=False)
 
 
-def create_displaced_frame_with_generator(video, generator_type='high_disp'):
+def create_displaced_frame_with_generator(video, generator_type="high_disp"):
     """
     Create a second 3D frame with synthetic motion displacements.
 
@@ -360,22 +413,22 @@ def create_displaced_frame_with_generator(video, generator_type='high_disp'):
     Returns:
         Tuple of (displaced_video, ground_truth_flow)
     """
-    print(f"\nCreating displaced frame with synthetic motion...")
+    print("\nCreating displaced frame with synthetic motion...")
     print(f"  Generator type: {generator_type}")
 
     depth, height, width = video.shape[:3]
 
     # Select generator
-    if generator_type == 'default':
+    if generator_type == "default":
         generator = get_default_3d_generator()
-    elif generator_type == 'low_disp':
+    elif generator_type == "low_disp":
         generator = get_low_disp_3d_generator()
-    elif generator_type == 'test':
+    elif generator_type == "test":
         generator = get_test_3d_generator()
-    elif generator_type == 'high_disp':
+    elif generator_type == "high_disp":
         generator = get_high_disp_3d_generator()
     else:
-        print(f"  Unknown generator type, using high_disp")
+        print("  Unknown generator type, using high_disp")
         generator = get_high_disp_3d_generator()
 
     # Generate flow field
@@ -383,13 +436,16 @@ def create_displaced_frame_with_generator(video, generator_type='high_disp'):
 
     # Print flow statistics
     print(f"  Ground truth flow shape: {flow_gt.shape}")
-    print(f"  Flow magnitude stats:")
+    print("  Flow magnitude stats:")
     print(
-        f"    dx: min={flow_gt[:, :, :, 0].min():.2f}, max={flow_gt[:, :, :, 0].max():.2f}, mean={flow_gt[:, :, :, 0].mean():.2f}")
+        f"    dx: min={flow_gt[:, :, :, 0].min():.2f}, max={flow_gt[:, :, :, 0].max():.2f}, mean={flow_gt[:, :, :, 0].mean():.2f}"
+    )
     print(
-        f"    dy: min={flow_gt[:, :, :, 1].min():.2f}, max={flow_gt[:, :, :, 1].max():.2f}, mean={flow_gt[:, :, :, 1].mean():.2f}")
+        f"    dy: min={flow_gt[:, :, :, 1].min():.2f}, max={flow_gt[:, :, :, 1].max():.2f}, mean={flow_gt[:, :, :, 1].mean():.2f}"
+    )
     print(
-        f"    dz: min={flow_gt[:, :, :, 2].min():.2f}, max={flow_gt[:, :, :, 2].max():.2f}, mean={flow_gt[:, :, :, 2].mean():.2f}")
+        f"    dz: min={flow_gt[:, :, :, 2].min():.2f}, max={flow_gt[:, :, :, 2].max():.2f}, mean={flow_gt[:, :, :, 2].mean():.2f}"
+    )
 
     # Create displaced frame using backward warping with negated flow
     # This simulates forward motion: backward_warp(video, -flow) ≈ forward_warp(video, flow)
@@ -399,10 +455,14 @@ def create_displaced_frame_with_generator(video, generator_type='high_disp'):
     # Crop boundaries to remove invalid regions (10 pixels from each edge)
     boundary = 10
     if displaced.ndim == 4:  # Has channels
-        displaced = displaced[boundary:-boundary, boundary:-boundary, boundary:-boundary, :]
+        displaced = displaced[
+            boundary:-boundary, boundary:-boundary, boundary:-boundary, :
+        ]
         flow_gt = flow_gt[boundary:-boundary, boundary:-boundary, boundary:-boundary, :]
     else:
-        displaced = displaced[boundary:-boundary, boundary:-boundary, boundary:-boundary]
+        displaced = displaced[
+            boundary:-boundary, boundary:-boundary, boundary:-boundary
+        ]
         flow_gt = flow_gt[boundary:-boundary, boundary:-boundary, boundary:-boundary, :]
 
     print(f"  Warping complete, cropped {boundary}px boundaries")
@@ -425,8 +485,12 @@ def evaluate_flow_accuracy(flow_est, flow_gt, boundary=25):
     """
     # Crop boundaries
     if boundary > 0:
-        flow_est_cropped = flow_est[boundary:-boundary, boundary:-boundary, boundary:-boundary, :]
-        flow_gt_cropped = flow_gt[boundary:-boundary, boundary:-boundary, boundary:-boundary, :]
+        flow_est_cropped = flow_est[
+            boundary:-boundary, boundary:-boundary, boundary:-boundary, :
+        ]
+        flow_gt_cropped = flow_gt[
+            boundary:-boundary, boundary:-boundary, boundary:-boundary, :
+        ]
     else:
         flow_est_cropped = flow_est
         flow_gt_cropped = flow_gt
@@ -453,42 +517,89 @@ def visualize_in_napari(original, displaced, corrected, flow_est=None, flow_gt=N
     viewer = napari.Viewer(title="3D Motion Correction Test")
 
     # Add original volume
-    viewer.add_image(original, name="Original", colormap='green', blending='additive', contrast_limits=[0, 1],
-        visible=True, opacity=0.7)
+    viewer.add_image(
+        original,
+        name="Original",
+        colormap="green",
+        blending="additive",
+        contrast_limits=[0, 1],
+        visible=True,
+        opacity=0.7,
+    )
 
     # Add displaced volume
-    viewer.add_image(displaced, name="Displaced (Synthetic Motion)", colormap='magenta', blending='additive',
-        contrast_limits=[0, 1], visible=True, opacity=0.7)
+    viewer.add_image(
+        displaced,
+        name="Displaced (Synthetic Motion)",
+        colormap="magenta",
+        blending="additive",
+        contrast_limits=[0, 1],
+        visible=True,
+        opacity=0.7,
+    )
 
     # Add corrected volume
-    viewer.add_image(corrected, name="Corrected (Motion Compensated)", colormap='cyan', blending='additive',
-        contrast_limits=[0, 1], visible=True, opacity=1.0)
+    viewer.add_image(
+        corrected,
+        name="Corrected (Motion Compensated)",
+        colormap="cyan",
+        blending="additive",
+        contrast_limits=[0, 1],
+        visible=True,
+        opacity=1.0,
+    )
 
     # Add flow magnitude for estimated flow - add channel dimension for napari
     if flow_est is not None:
-        flow_est_magnitude = np.sqrt(flow_est[:, :, :, 0] ** 2 + flow_est[:, :, :, 1] ** 2 + flow_est[:, :, :, 2] ** 2)
+        flow_est_magnitude = np.sqrt(
+            flow_est[:, :, :, 0] ** 2
+            + flow_est[:, :, :, 1] ** 2
+            + flow_est[:, :, :, 2] ** 2
+        )
         # Add empty channel dimension to match image dimensions
         flow_est_magnitude = flow_est_magnitude[..., np.newaxis]
-        viewer.add_image(flow_est_magnitude, name="Estimated Flow Magnitude", colormap='viridis', visible=False,
-            contrast_limits=[0, flow_est_magnitude.max()])
+        viewer.add_image(
+            flow_est_magnitude,
+            name="Estimated Flow Magnitude",
+            colormap="viridis",
+            visible=False,
+            contrast_limits=[0, flow_est_magnitude.max()],
+        )
 
     # Add flow magnitude for ground truth - use same colormap as estimated
     if flow_gt is not None:
-        flow_gt_magnitude = np.sqrt(flow_gt[:, :, :, 0] ** 2 + flow_gt[:, :, :, 1] ** 2 + flow_gt[:, :, :, 2] ** 2)
+        flow_gt_magnitude = np.sqrt(
+            flow_gt[:, :, :, 0] ** 2
+            + flow_gt[:, :, :, 1] ** 2
+            + flow_gt[:, :, :, 2] ** 2
+        )
         # Add empty channel dimension to match image dimensions
         flow_gt_magnitude = flow_gt_magnitude[..., np.newaxis]
-        viewer.add_image(flow_gt_magnitude, name="Ground Truth Flow Magnitude", colormap='viridis', visible=False,
-            contrast_limits=[0, flow_gt_magnitude.max()])
+        viewer.add_image(
+            flow_gt_magnitude,
+            name="Ground Truth Flow Magnitude",
+            colormap="viridis",
+            visible=False,
+            contrast_limits=[0, flow_gt_magnitude.max()],
+        )
 
         # Add flow error magnitude
         flow_error = flow_est - flow_gt if flow_est is not None else None
         if flow_error is not None:
             flow_error_magnitude = np.sqrt(
-                flow_error[:, :, :, 0] ** 2 + flow_error[:, :, :, 1] ** 2 + flow_error[:, :, :, 2] ** 2)
+                flow_error[:, :, :, 0] ** 2
+                + flow_error[:, :, :, 1] ** 2
+                + flow_error[:, :, :, 2] ** 2
+            )
             # Add channel dimension to prevent transposition issue in napari
             flow_error_magnitude = flow_error_magnitude[..., np.newaxis]
-            viewer.add_image(flow_error_magnitude, name="Flow Error Magnitude", colormap='hot', visible=False,
-                contrast_limits=[0, flow_error_magnitude.max()])
+            viewer.add_image(
+                flow_error_magnitude,
+                name="Flow Error Magnitude",
+                colormap="hot",
+                visible=False,
+                contrast_limits=[0, flow_error_magnitude.max()],
+            )
 
     print("\nViewer controls:")
     print("  - Use slider at bottom to navigate through Z slices")
@@ -558,32 +669,47 @@ def main():
     processed = process_3d_stack(video_3d)
 
     # Create displaced version with synthetic 3D motion
-    displaced, flow_gt = create_displaced_frame_with_generator(processed, generator_type='high_disp'
+    displaced, flow_gt = create_displaced_frame_with_generator(
+        processed,
+        generator_type="high_disp",
         # Use high displacement with enhanced expansion
     )
 
     # Crop original to match displaced size after boundary removal
     boundary = 10
     if processed.ndim == 4:  # Has channels
-        original_cropped = processed[boundary:-boundary, boundary:-boundary, boundary:-boundary, :]
+        original_cropped = processed[
+            boundary:-boundary, boundary:-boundary, boundary:-boundary, :
+        ]
     else:
-        original_cropped = processed[boundary:-boundary, boundary:-boundary, boundary:-boundary]
+        original_cropped = processed[
+            boundary:-boundary, boundary:-boundary, boundary:-boundary
+        ]
 
     print("\nPreparing frames for motion correction...")
 
     # Set up flow parameters for 3D optical flow
     # get_displacement expects: alpha=(2,2,2), update_lag=10, iterations=20, min_level=0,
     # levels=50, eta=0.8, a_smooth=0.5, a_data=0.45, const_assumption='gc', uvw=None, weight=None
-    flow_params = {'alpha': (0.25, 0.25, 0.25),  # 3D alpha values for x, y, z axes
-        'iterations': 100, 'a_data': 0.45, 'a_smooth': 1.0, 'weight': np.array([0.5, 0.5], dtype=np.float64),
-        'levels': 50, 'eta': 0.8, 'update_lag': 5, 'min_level': 5,
-        'const_assumption': 'gc',  # gradient constancy
-        'uvw': None  # Initial flow field
+    flow_params = {
+        "alpha": (0.25, 0.25, 0.25),  # 3D alpha values for x, y, z axes
+        "iterations": 100,
+        "a_data": 0.45,
+        "a_smooth": 1.0,
+        "weight": np.array([0.5, 0.5], dtype=np.float64),
+        "levels": 50,
+        "eta": 0.8,
+        "update_lag": 5,
+        "min_level": 5,
+        "const_assumption": "gc",  # gradient constancy
+        "uvw": None,  # Initial flow field
     }
 
     # Compute 3D optical flow (preprocessing is done internally)
     if mode == "torch":
-        flow_est = compute_3d_optical_flow_torch(original_cropped, displaced, flow_params)
+        flow_est = compute_3d_optical_flow_torch(
+            original_cropped, displaced, flow_params
+        )
     else:
         flow_est = compute_3d_optical_flow(original_cropped, displaced, flow_params)
 
@@ -591,12 +717,14 @@ def main():
     print("\nApplying motion correction...")
     # imregister_wrapper warps displaced to align with original_cropped
     # flow_est contains (dx, dy, dz) components that map from displaced to original
-    corrected = imregister_wrapper(displaced,  # frame to warp
+    corrected = imregister_wrapper(
+        displaced,  # frame to warp
         flow_est[:, :, :, 0],  # u (dx displacement)
         flow_est[:, :, :, 1],  # v (dy displacement)
         flow_est[:, :, :, 2],  # w (dz displacement)
         original_cropped,  # reference for boundary conditions
-        interpolation_method='cubic')
+        interpolation_method="cubic",
+    )
 
     # Evaluate accuracy if we have ground truth
     epe = evaluate_flow_accuracy(flow_est, flow_gt, boundary=25)
@@ -609,9 +737,15 @@ def main():
     diff_original_corrected = np.mean(np.abs(original_cropped - corrected))
     diff_original_displaced = np.mean(np.abs(original_cropped - displaced))
 
-    print(f"  Mean absolute difference (original vs displaced): {diff_original_displaced:.4f}")
-    print(f"  Mean absolute difference (original vs corrected): {diff_original_corrected:.4f}")
-    print(f"  Improvement ratio: {diff_original_displaced / diff_original_corrected:.2f}x")
+    print(
+        f"  Mean absolute difference (original vs displaced): {diff_original_displaced:.4f}"
+    )
+    print(
+        f"  Mean absolute difference (original vs corrected): {diff_original_corrected:.4f}"
+    )
+    print(
+        f"  Improvement ratio: {diff_original_displaced / diff_original_corrected:.2f}x"
+    )
 
     # Visualize in napari
     visualize_in_napari(original_cropped, displaced, corrected, flow_est, flow_gt)

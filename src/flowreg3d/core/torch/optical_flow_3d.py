@@ -14,7 +14,9 @@ def _replicate_pad3d(x: Tensor, pad) -> Tensor:
     return F.pad(x[None, None], pad, mode="replicate")[0, 0]
 
 
-def _pad_spatial_const_4d_lastdim(x: Tensor, pads=(1,1,1,1,1,1), value=0.0) -> Tensor:
+def _pad_spatial_const_4d_lastdim(
+    x: Tensor, pads=(1, 1, 1, 1, 1, 1), value=0.0
+) -> Tensor:
     x5 = x.permute(3, 0, 1, 2).unsqueeze(0)
     wL, wR = pads[4], pads[5]
     hL, hR = pads[2], pads[3]
@@ -31,7 +33,9 @@ def _median3d(x: Tensor, k: int = 5) -> Tensor:
     return u.median(dim=-1).values[0, 0]
 
 
-def _normalize_weight_like_numpy(weight: Union[float, Tensor], C: int, shape3, device, dtype) -> Tensor:
+def _normalize_weight_like_numpy(
+    weight: Union[float, Tensor], C: int, shape3, device, dtype
+) -> Tensor:
     if isinstance(weight, torch.Tensor):
         w = weight.to(device=device, dtype=dtype)
         if w.ndim == 1:
@@ -73,10 +77,18 @@ def matlab_gradient(f: Tensor, spacing: float) -> Tensor:
     return g
 
 
-def imregister_wrapper(f2_level: Tensor, u: Tensor, v: Tensor, w: Tensor, f1_level: Tensor,
-                       interpolation_method: str = "bilinear") -> Tensor:
-    assert interpolation_method in ("bilinear", "nearest"), \
-        "Only 'bilinear' and 'nearest' interpolation are supported with torch backend."
+def imregister_wrapper(
+    f2_level: Tensor,
+    u: Tensor,
+    v: Tensor,
+    w: Tensor,
+    f1_level: Tensor,
+    interpolation_method: str = "bilinear",
+) -> Tensor:
+    assert interpolation_method in (
+        "bilinear",
+        "nearest",
+    ), "Only 'bilinear' and 'nearest' interpolation are supported with torch backend."
     if f2_level.ndim == 3:
         f2_level = f2_level.unsqueeze(-1)
         f1_level = f1_level.unsqueeze(-1)
@@ -87,15 +99,31 @@ def imregister_wrapper(f2_level: Tensor, u: Tensor, v: Tensor, w: Tensor, f1_lev
     map_x = x + u
     map_y = y + v
     map_z = z + w
-    oob = (map_x < 0) | (map_x > (W - 1)) | (map_y < 0) | (map_y > (H - 1)) | (map_z < 0) | (map_z > (D - 1))
+    oob = (
+        (map_x < 0)
+        | (map_x > (W - 1))
+        | (map_y < 0)
+        | (map_y > (H - 1))
+        | (map_z < 0)
+        | (map_z > (D - 1))
+    )
     gx = 2.0 * (map_x / (W - 1.0)) - 1.0
     gy = 2.0 * (map_y / (H - 1.0)) - 1.0
     gz = 2.0 * (map_z / (D - 1.0)) - 1.0
     grid = torch.stack([gx, gy, gz], dim=-1).unsqueeze(0)
     x_in = f2_level.permute(3, 0, 1, 2).unsqueeze(0)
 
-    sampled = F.grid_sample(x_in, grid, mode="bilinear",
-        padding_mode="border", align_corners=True, ).squeeze(0).permute(1, 2, 3, 0)
+    sampled = (
+        F.grid_sample(
+            x_in,
+            grid,
+            mode="bilinear",
+            padding_mode="border",
+            align_corners=True,
+        )
+        .squeeze(0)
+        .permute(1, 2, 3, 0)
+    )
     if f1_level.ndim == 3:
         f1_level = f1_level.unsqueeze(-1)
     sampled[oob] = f1_level[oob]
@@ -139,20 +167,20 @@ def get_motion_tensor_gc(f1: Tensor, f2: Tensor, hz: float, hy: float, hx: float
         fxx = torch.zeros_like(f)
         fyy = torch.zeros_like(f)
         fzz = torch.zeros_like(f)
-        fxx[:, :, 1:-1] = (f[:, :, 0:-2] - 2.0 * f[:, :, 1:-1] + f[:, :, 2:]) / (hx_ * hx_)
-        fyy[:, 1:-1, :] = (f[:, 0:-2, :] - 2.0 * f[:, 1:-1, :] + f[:, 2:, :]) / (hy_ * hy_)
-        fzz[1:-1, :, :] = (f[0:-2, :, :] - 2.0 * f[1:-1, :, :] + f[2:, :, :]) / (hz_ * hz_)
+        fxx[:, :, 1:-1] = (f[:, :, 0:-2] - 2.0 * f[:, :, 1:-1] + f[:, :, 2:]) / (
+            hx_ * hx_
+        )
+        fyy[:, 1:-1, :] = (f[:, 0:-2, :] - 2.0 * f[:, 1:-1, :] + f[:, 2:, :]) / (
+            hy_ * hy_
+        )
+        fzz[1:-1, :, :] = (f[0:-2, :, :] - 2.0 * f[1:-1, :, :] + f[2:, :, :]) / (
+            hz_ * hz_
+        )
         return fxx, fyy, fzz
 
     dfx_z = matlab_gradient(fx, hz)
     dfx_y = matlab_gradient(fx.transpose(0, 1), hy).transpose(0, 1)
     dfy_z = matlab_gradient(fy, hz)
-    dfy_y = matlab_gradient(fy.transpose(0, 1), hy).transpose(0, 1)
-    dfx_x = matlab_gradient(fx.transpose(0, 2), hx).transpose(0, 2)
-    dfy_x = matlab_gradient(fy.transpose(0, 2), hx).transpose(0, 2)
-    dfz_z = matlab_gradient(fz, hz)
-    dfz_y = matlab_gradient(fz.transpose(0, 1), hy).transpose(0, 1)
-    dfz_x = matlab_gradient(fz.transpose(0, 2), hx).transpose(0, 2)
     dft_z = matlab_gradient(ft, hz)
     dft_y = matlab_gradient(ft.transpose(0, 1), hy).transpose(0, 1)
     dft_x = matlab_gradient(ft.transpose(0, 2), hx).transpose(0, 2)
@@ -181,19 +209,73 @@ def get_motion_tensor_gc(f1: Tensor, f2: Tensor, hz: float, hy: float, hx: float
     return J11, J22, J33, J44, J12, J13, J23, J14, J24, J34
 
 
-def level_solver(J11: Tensor, J22: Tensor, J33: Tensor, J44: Tensor, J12: Tensor, J13: Tensor, J23: Tensor, J14: Tensor,
-                 J24: Tensor, J34: Tensor, weight: Union[float, Tensor], u: Tensor, v: Tensor, w: Tensor,
-                 alpha: Tuple[float, float, float], iterations: int, update_lag: int, verbose,
-                 a_data: Union[float, Tensor], a_smooth: float, hx: float, hy: float, hz: float):
-    du, dv, dw = level_solver_rbgs3d_torch(J11, J22, J33, J44, J12, J13, J23, J14, J24, J34, weight, u, v, w, alpha,
-        iterations, update_lag, a_data, a_smooth, hx, hy, hz, )
+def level_solver(
+    J11: Tensor,
+    J22: Tensor,
+    J33: Tensor,
+    J44: Tensor,
+    J12: Tensor,
+    J13: Tensor,
+    J23: Tensor,
+    J14: Tensor,
+    J24: Tensor,
+    J34: Tensor,
+    weight: Union[float, Tensor],
+    u: Tensor,
+    v: Tensor,
+    w: Tensor,
+    alpha: Tuple[float, float, float],
+    iterations: int,
+    update_lag: int,
+    verbose,
+    a_data: Union[float, Tensor],
+    a_smooth: float,
+    hx: float,
+    hy: float,
+    hz: float,
+):
+    du, dv, dw = level_solver_rbgs3d_torch(
+        J11,
+        J22,
+        J33,
+        J44,
+        J12,
+        J13,
+        J23,
+        J14,
+        J24,
+        J34,
+        weight,
+        u,
+        v,
+        w,
+        alpha,
+        iterations,
+        update_lag,
+        a_data,
+        a_smooth,
+        hx,
+        hy,
+        hz,
+    )
     return du, dv, dw
 
 
-def get_displacement(fixed: Tensor, moving: Tensor, alpha: Tuple[float, float, float] = (2.0, 2.0, 2.0),
-                     update_lag: int = 10, iterations: int = 20, min_level: int = 0, levels: int = 50, eta: float = 0.8,
-                     a_smooth: float = 0.5, a_data: Union[float, Tensor] = 0.45, const_assumption: str = "gc",
-                     uvw: Optional[Tensor] = None, weight: Optional[Union[float, Tensor]] = None) -> Tensor:
+def get_displacement(
+    fixed: Tensor,
+    moving: Tensor,
+    alpha: Tuple[float, float, float] = (2.0, 2.0, 2.0),
+    update_lag: int = 10,
+    iterations: int = 20,
+    min_level: int = 0,
+    levels: int = 50,
+    eta: float = 0.8,
+    a_smooth: float = 0.5,
+    a_data: Union[float, Tensor] = 0.45,
+    const_assumption: str = "gc",
+    uvw: Optional[Tensor] = None,
+    weight: Optional[Union[float, Tensor]] = None,
+) -> Tensor:
     assert const_assumption == "gc"
     # dtype parity with NumPy path
     fixed = fixed.to(torch.float64)
@@ -220,14 +302,19 @@ def get_displacement(fixed: Tensor, moving: Tensor, alpha: Tuple[float, float, f
 
     shape3 = (p, m, n)
     if weight is None:
-        weight_ = torch.ones((*shape3, C), dtype=torch.float64, device=fixed.device) / float(C)
+        weight_ = torch.ones(
+            (*shape3, C), dtype=torch.float64, device=fixed.device
+        ) / float(C)
     else:
-        weight_ = _normalize_weight_like_numpy(weight, C, shape3, fixed.device, torch.float64)
+        weight_ = _normalize_weight_like_numpy(
+            weight, C, shape3, fixed.device, torch.float64
+        )
 
-    a_data_vec = (torch.full((C,), float(a_data), dtype=torch.float64, device=fixed.device) if isinstance(a_data,
-                                                                                                          (float,
-                                                                                                           int)) else torch.as_tensor(
-        a_data, dtype=torch.float64, device=fixed.device))
+    a_data_vec = (
+        torch.full((C,), float(a_data), dtype=torch.float64, device=fixed.device)
+        if isinstance(a_data, (float, int))
+        else torch.as_tensor(a_data, dtype=torch.float64, device=fixed.device)
+    )
 
     f1_low = fixed_
     f2_low = moving_
@@ -272,8 +359,14 @@ def get_displacement(fixed: Tensor, moving: Tensor, alpha: Tuple[float, float, f
             u = add_boundary(resize(u[1:-1, 1:-1, 1:-1], level_size))
             v = add_boundary(resize(v[1:-1, 1:-1, 1:-1], level_size))
             w = add_boundary(resize(w[1:-1, 1:-1, 1:-1], level_size))
-            tmp = imregister_wrapper(f2_level, u[1:-1, 1:-1, 1:-1] / cur_hx, v[1:-1, 1:-1, 1:-1] / cur_hy,
-                                               w[1:-1, 1:-1, 1:-1] / cur_hz, f1_level, interpolation_method="bilinear", )
+            tmp = imregister_wrapper(
+                f2_level,
+                u[1:-1, 1:-1, 1:-1] / cur_hx,
+                v[1:-1, 1:-1, 1:-1] / cur_hy,
+                w[1:-1, 1:-1, 1:-1] / cur_hz,
+                f1_level,
+                interpolation_method="bilinear",
+            )
         if tmp.ndim == 3:
             tmp = tmp.unsqueeze(-1)
 
@@ -281,7 +374,12 @@ def get_displacement(fixed: Tensor, moving: Tensor, alpha: Tuple[float, float, f
         v = v.contiguous()
         w = w.contiguous()
 
-        J_shape = (f1_level.shape[0] + 2, f1_level.shape[1] + 2, f1_level.shape[2] + 2, f1_level.shape[3])
+        J_shape = (
+            f1_level.shape[0] + 2,
+            f1_level.shape[1] + 2,
+            f1_level.shape[2] + 2,
+            f1_level.shape[3],
+        )
         J11 = torch.zeros(J_shape, dtype=torch.float64, device=fixed.device)
         J22 = torch.zeros_like(J11)
         J33 = torch.zeros_like(J11)
@@ -294,7 +392,9 @@ def get_displacement(fixed: Tensor, moving: Tensor, alpha: Tuple[float, float, f
         J34 = torch.zeros_like(J11)
 
         for ch in range(f1_level.shape[3]):
-            Jc = get_motion_tensor_gc(f1_level[:, :, :, ch], tmp[:, :, :, ch], cur_hz, cur_hy, cur_hx)
+            Jc = get_motion_tensor_gc(
+                f1_level[:, :, :, ch], tmp[:, :, :, ch], cur_hz, cur_hy, cur_hx
+            )
             J11[:, :, :, ch] = Jc[0]
             J22[:, :, :, ch] = Jc[1]
             J33[:, :, :, ch] = Jc[2]
@@ -309,15 +409,42 @@ def get_displacement(fixed: Tensor, moving: Tensor, alpha: Tuple[float, float, f
         weight_level = resize(weight_, f1_level.shape[:3])
         if weight_level.ndim < 4:
             weight_level = weight_level.unsqueeze(-1)
-        weight_level = _pad_spatial_const_4d_lastdim(weight_level, (1,1,1,1,1,1), value=0.0)
+        weight_level = _pad_spatial_const_4d_lastdim(
+            weight_level, (1, 1, 1, 1, 1, 1), value=0.0
+        )
 
         alpha_scaling = 1.0 if i == min_level else (eta ** (-0.5 * i))
-        alpha_i = (alpha_scaling * alpha[0], alpha_scaling * alpha[1], alpha_scaling * alpha[2])
+        alpha_i = (
+            alpha_scaling * alpha[0],
+            alpha_scaling * alpha[1],
+            alpha_scaling * alpha[2],
+        )
 
-        du, dv, dw = level_solver(J11.contiguous(), J22.contiguous(), J33.contiguous(), J44.contiguous(),
-            J12.contiguous(), J13.contiguous(), J23.contiguous(), J14.contiguous(), J24.contiguous(), J34.contiguous(),
-            weight_level.contiguous(), u, v, w, alpha_i, iterations, update_lag, None, a_data_vec, a_smooth, cur_hx,
-            cur_hy, cur_hz, )
+        du, dv, dw = level_solver(
+            J11.contiguous(),
+            J22.contiguous(),
+            J33.contiguous(),
+            J44.contiguous(),
+            J12.contiguous(),
+            J13.contiguous(),
+            J23.contiguous(),
+            J14.contiguous(),
+            J24.contiguous(),
+            J34.contiguous(),
+            weight_level.contiguous(),
+            u,
+            v,
+            w,
+            alpha_i,
+            iterations,
+            update_lag,
+            None,
+            a_data_vec,
+            a_smooth,
+            cur_hx,
+            cur_hy,
+            cur_hz,
+        )
 
         if min(level_size) > 5:
             core = (slice(1, -1), slice(1, -1), slice(1, -1))
@@ -329,13 +456,19 @@ def get_displacement(fixed: Tensor, moving: Tensor, alpha: Tuple[float, float, f
         v = v + dv
         w = w + dw
 
-    flow = torch.zeros((u.shape[0] - 2, u.shape[1] - 2, u.shape[2] - 2, 3), dtype=torch.float64, device=fixed.device)
+    flow = torch.zeros(
+        (u.shape[0] - 2, u.shape[1] - 2, u.shape[2] - 2, 3),
+        dtype=torch.float64,
+        device=fixed.device,
+    )
     flow[..., 0] = u[1:-1, 1:-1, 1:-1]
     flow[..., 1] = v[1:-1, 1:-1, 1:-1]
     flow[..., 2] = w[1:-1, 1:-1, 1:-1]
 
     if min_level > 0:
-        flow_resized = torch.zeros((p, m, n, 3), dtype=torch.float64, device=fixed.device)
+        flow_resized = torch.zeros(
+            (p, m, n, 3), dtype=torch.float64, device=fixed.device
+        )
         flow_resized[..., 0] = resize(flow[..., 0], (p, m, n))
         flow_resized[..., 1] = resize(flow[..., 1], (p, m, n))
         flow_resized[..., 2] = resize(flow[..., 2], (p, m, n))

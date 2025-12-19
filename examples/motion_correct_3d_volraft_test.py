@@ -18,20 +18,32 @@ import napari
 import numpy as np
 import torch
 from pyflowreg.util.io.factory import get_video_file_reader
-from scipy.ndimage import zoom, gaussian_filter
+from scipy.ndimage import zoom
 
 from flowreg3d.core.optical_flow_3d import imregister_wrapper
-from flowreg3d.motion_generation.motion_generators import (get_default_3d_generator, get_low_disp_3d_generator,
-                                                           get_test_3d_generator, get_high_disp_3d_generator)
+from flowreg3d.motion_generation.motion_generators import (
+    get_default_3d_generator,
+    get_low_disp_3d_generator,
+    get_test_3d_generator,
+    get_high_disp_3d_generator,
+)
 from flowreg3d.util.random import fix_seed
 from VolRAFT.models.model import ModelFactory
 from VolRAFT.utils import CheckpointController, YAMLHandler
 
 
-DEFAULT_VOLRAFT_CHECKPOINT_DIR = Path(__file__).resolve().parents[1] / "VolRAFT" / "checkpoints" / \
-    "volraft_config_120" / "checkpoint_20240119_184617_980292"
-VOLRAFT_CHECKPOINT_DIR = Path(os.environ["VOLRAFT_CHECKPOINT_DIR"]).expanduser().resolve() \
-    if "VOLRAFT_CHECKPOINT_DIR" in os.environ else DEFAULT_VOLRAFT_CHECKPOINT_DIR
+DEFAULT_VOLRAFT_CHECKPOINT_DIR = (
+    Path(__file__).resolve().parents[1]
+    / "VolRAFT"
+    / "checkpoints"
+    / "volraft_config_120"
+    / "checkpoint_20240119_184617_980292"
+)
+VOLRAFT_CHECKPOINT_DIR = (
+    Path(os.environ["VOLRAFT_CHECKPOINT_DIR"]).expanduser().resolve()
+    if "VOLRAFT_CHECKPOINT_DIR" in os.environ
+    else DEFAULT_VOLRAFT_CHECKPOINT_DIR
+)
 mode = "volraft"
 
 
@@ -45,7 +57,7 @@ def process_3d_stack(video_data):
     Returns:
         Processed video array
     """
-    print(f"\nProcessing 3D stack...")
+    print("\nProcessing 3D stack...")
     print(f"  Input shape: {video_data.shape}")
 
     # Convert to float32 for processing
@@ -55,7 +67,12 @@ def process_3d_stack(video_data):
     resize_factor = 1
     print(f"  Resizing to {100*resize_factor}%...")
     if video.ndim == 4:  # Has channels
-        zoom_factors = (1.0, resize_factor, resize_factor, 1.0)  # Don't resize time or channels
+        zoom_factors = (
+            1.0,
+            resize_factor,
+            resize_factor,
+            1.0,
+        )  # Don't resize time or channels
     else:
         zoom_factors = (1.0, resize_factor, resize_factor)  # Don't resize time
 
@@ -85,7 +102,9 @@ def process_3d_stack(video_data):
         video_normalized = video_cropped
 
     print(f"  Final shape: {video_normalized.shape}")
-    print(f"  Value range: [{video_normalized.min():.3f}, {video_normalized.max():.3f}]")
+    print(
+        f"  Value range: [{video_normalized.min():.3f}, {video_normalized.max():.3f}]"
+    )
 
     return video_normalized
 
@@ -114,7 +133,7 @@ def warp_volume_bw3d_torch(volume, flow):
     zz = torch.linspace(-1, 1, Z)
     yy = torch.linspace(-1, 1, H)
     xx = torch.linspace(-1, 1, W)
-    Zg, Yg, Xg = torch.meshgrid(zz, yy, xx, indexing='ij')
+    Zg, Yg, Xg = torch.meshgrid(zz, yy, xx, indexing="ij")
 
     # Add normalized flow to grid
     nz = Zg + 2 * f[..., 0] / (Z - 1)
@@ -128,7 +147,9 @@ def warp_volume_bw3d_torch(volume, flow):
     v = v.permute(3, 0, 1, 2)[None]
 
     # Apply backward warping
-    out = torch.nn.functional.grid_sample(v, grid, mode='bilinear', padding_mode='border', align_corners=True)
+    out = torch.nn.functional.grid_sample(
+        v, grid, mode="bilinear", padding_mode="border", align_corners=True
+    )
 
     # Reshape output
     out = out[0].permute(1, 2, 3, 0).numpy()
@@ -148,7 +169,7 @@ def warp_volume_splat3d(volume, flow):
         Warped volume with same shape as input
     """
     Z, H, W = volume.shape[:3]
-    z, y, x = np.meshgrid(np.arange(Z), np.arange(H), np.arange(W), indexing='ij')
+    z, y, x = np.meshgrid(np.arange(Z), np.arange(H), np.arange(W), indexing="ij")
 
     # Target coordinates (flow is [dx, dy, dz])
     tx = (x + flow[..., 0]).ravel()  # dx
@@ -183,15 +204,25 @@ def warp_volume_splat3d(volume, flow):
 
     def accum(values):
         V = values.ravel()
-        idx = lambda zz, yy, xx: (zz * H + yy) * W + xx
+
+        def idx(zz, yy, xx):
+            return (zz * H + yy) * W + xx
+
         N = Z * H * W
         out = np.zeros(N, dtype=np.float64)
         den = np.zeros(N, dtype=np.float64)
 
         # Splat to 8 neighboring voxels
-        for w, zz, yy, xx in [(w000, iz0, iy0, ix0), (w100, iz0, iy0, ix1), (w010, iz0, iy1, ix0),
-                              (w110, iz0, iy1, ix1), (w001, iz1, iy0, ix0), (w101, iz1, iy0, ix1),
-                              (w011, iz1, iy1, ix0), (w111, iz1, iy1, ix1)]:
+        for w, zz, yy, xx in [
+            (w000, iz0, iy0, ix0),
+            (w100, iz0, iy0, ix1),
+            (w010, iz0, iy1, ix0),
+            (w110, iz0, iy1, ix1),
+            (w001, iz1, iy0, ix0),
+            (w101, iz1, iy0, ix1),
+            (w011, iz1, iy1, ix0),
+            (w111, iz1, iy1, ix1),
+        ]:
             idv = idx(zz, yy, xx)
             np.add.at(out, idv, V * w)
             np.add.at(den, idv, w)
@@ -222,8 +253,12 @@ def warp_volume_pc3d(volume, flow):
     Z, H, W = volume.shape[:3]
 
     # Create original grid coordinates
-    grid_z, grid_y, grid_x = np.meshgrid(np.arange(Z, dtype=np.float32), np.arange(H, dtype=np.float32),
-                                         np.arange(W, dtype=np.float32), indexing='ij')
+    grid_z, grid_y, grid_x = np.meshgrid(
+        np.arange(Z, dtype=np.float32),
+        np.arange(H, dtype=np.float32),
+        np.arange(W, dtype=np.float32),
+        indexing="ij",
+    )
 
     # Compute target coordinates (where each pixel moves TO)
     target_x = grid_x + flow[:, :, :, 0]  # dx component
@@ -235,21 +270,36 @@ def warp_volume_pc3d(volume, flow):
         warped = np.zeros_like(volume)
         for c in range(volume.shape[3]):
             # Flatten arrays for griddata
-            source_points = np.column_stack([target_x.flatten(), target_y.flatten(), target_z.flatten()])
+            source_points = np.column_stack(
+                [target_x.flatten(), target_y.flatten(), target_z.flatten()]
+            )
             source_values = volume[:, :, :, c].flatten()
-            target_points = np.column_stack([grid_x.flatten(), grid_y.flatten(), grid_z.flatten()])
+            target_points = np.column_stack(
+                [grid_x.flatten(), grid_y.flatten(), grid_z.flatten()]
+            )
 
             # Use griddata for forward warping (scatter operation)
-            warped[:, :, :, c] = griddata(source_points, source_values, target_points, method='linear',
-                                          fill_value=0).reshape(Z, H, W)
+            warped[:, :, :, c] = griddata(
+                source_points,
+                source_values,
+                target_points,
+                method="linear",
+                fill_value=0,
+            ).reshape(Z, H, W)
     else:
         # Flatten arrays for griddata
-        source_points = np.column_stack([target_x.flatten(), target_y.flatten(), target_z.flatten()])
+        source_points = np.column_stack(
+            [target_x.flatten(), target_y.flatten(), target_z.flatten()]
+        )
         source_values = volume.flatten()
-        target_points = np.column_stack([grid_x.flatten(), grid_y.flatten(), grid_z.flatten()])
+        target_points = np.column_stack(
+            [grid_x.flatten(), grid_y.flatten(), grid_z.flatten()]
+        )
 
         # Use griddata for forward warping (scatter operation)
-        warped = griddata(source_points, source_values, target_points, method='linear', fill_value=0).reshape(Z, H, W)
+        warped = griddata(
+            source_points, source_values, target_points, method="linear", fill_value=0
+        ).reshape(Z, H, W)
 
     return warped
 
@@ -282,7 +332,9 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
     # VolRAFT expects data in [0,1] range (from process_3d_stack) and performs its own joint normalization internally
     # No Gaussian filtering - VolRAFT was trained on raw data without pre-filtering
     # The model will normalize both volumes jointly using min/max across both
-    print(f"  Input range: [{f1.min():.3f}, {f1.max():.3f}] (from process_3d_stack normalization)")
+    print(
+        f"  Input range: [{f1.min():.3f}, {f1.max():.3f}] (from process_3d_stack normalization)"
+    )
     print("  Passing to VolRAFT (model will apply joint normalization internally)")
 
     checkpoint_dir = Path(flow_params.get("checkpoint_dir", VOLRAFT_CHECKPOINT_DIR))
@@ -304,17 +356,21 @@ def compute_3d_optical_flow(frame1, frame2, flow_params):
 
     # Print flow statistics
     print(f"  Flow field shape: {flow.shape}")
-    print(f"  Flow magnitude stats:")
+    print("  Flow magnitude stats:")
     print(
-        f"    dx: min={flow[:, :, :, 0].min():.2f}, max={flow[:, :, :, 0].max():.2f}, mean={flow[:, :, :, 0].mean():.2f}")
+        f"    dx: min={flow[:, :, :, 0].min():.2f}, max={flow[:, :, :, 0].max():.2f}, mean={flow[:, :, :, 0].mean():.2f}"
+    )
     print(
-        f"    dy: min={flow[:, :, :, 1].min():.2f}, max={flow[:, :, :, 1].max():.2f}, mean={flow[:, :, :, 1].mean():.2f}")
+        f"    dy: min={flow[:, :, :, 1].min():.2f}, max={flow[:, :, :, 1].max():.2f}, mean={flow[:, :, :, 1].mean():.2f}"
+    )
     print(
-        f"    dz: min={flow[:, :, :, 2].min():.2f}, max={flow[:, :, :, 2].max():.2f}, mean={flow[:, :, :, 2].mean():.2f}")
+        f"    dz: min={flow[:, :, :, 2].min():.2f}, max={flow[:, :, :, 2].max():.2f}, mean={flow[:, :, :, 2].mean():.2f}"
+    )
 
-    total_magnitude = np.sqrt(np.sum(flow ** 2, axis=-1))
+    total_magnitude = np.sqrt(np.sum(flow**2, axis=-1))
     print(
-        f"  Total magnitude: min={total_magnitude.min():.2f}, max={total_magnitude.max():.2f}, mean={total_magnitude.mean():.2f}")
+        f"  Total magnitude: min={total_magnitude.min():.2f}, max={total_magnitude.max():.2f}, mean={total_magnitude.mean():.2f}"
+    )
 
     return flow
 
@@ -323,7 +379,10 @@ def compute_3d_optical_flow_torch(frame1, frame2, flow_params):
     import numpy as np
     import torch
 
-    from flowreg3d.util.torch.image_processing_3D import normalize, apply_gaussian_filter
+    from flowreg3d.util.torch.image_processing_3D import (
+        normalize,
+        apply_gaussian_filter,
+    )
     import flowreg3d.core.torch.optical_flow_3d as of3d
 
     # Inputs → float64 torch tensors, ensure (Z,Y,X,C)
@@ -349,8 +408,12 @@ def compute_3d_optical_flow_torch(frame1, frame2, flow_params):
 
     start = time.time()
     with torch.no_grad():
-        flow = of3d.get_displacement(t1n, t2n, **flow_params)  # returns (Z,Y,X,3) float64
-    print(f"  Flow computation time: {time.time() - start:.2f} seconds with torch backend.")
+        flow = of3d.get_displacement(
+            t1n, t2n, **flow_params
+        )  # returns (Z,Y,X,3) float64
+    print(
+        f"  Flow computation time: {time.time() - start:.2f} seconds with torch backend."
+    )
 
     return flow.detach().cpu().numpy().astype(np.float64, copy=False)
 
@@ -376,11 +439,11 @@ def _gaussian_window_3d(shape: Tuple[int, int, int]) -> np.ndarray:
     """
     dz, dy, dx = map(int, shape)
     mz, my, mx = [(s - 1.0) / 2.0 for s in (dz, dy, dx)]
-    zz, yy, xx = np.ogrid[-mz:mz + 1, -my:my + 1, -mx:mx + 1]
+    zz, yy, xx = np.ogrid[-mz : mz + 1, -my : my + 1, -mx : mx + 1]
     sigma = float(min(shape)) / 6.0
     if sigma <= 0:
         sigma = 1.0
-    window = np.exp(-(xx ** 2 + yy ** 2 + zz ** 2) / (2.0 * sigma ** 2))
+    window = np.exp(-(xx**2 + yy**2 + zz**2) / (2.0 * sigma**2))
     return window.astype(np.float32, copy=False)
 
 
@@ -398,15 +461,19 @@ def _window_starts(length: int, window: int, stride: int) -> np.ndarray:
     return np.array(starts, dtype=int)
 
 
-def _compute_patch_padding(volume_shape: Tuple[int, int, int],
-                           patch_shape: Tuple[int, int, int],
-                           margin_before: Tuple[int, int, int],
-                           margin_after: Tuple[int, int, int]) -> Tuple[Tuple[int, int], ...]:
+def _compute_patch_padding(
+    volume_shape: Tuple[int, int, int],
+    patch_shape: Tuple[int, int, int],
+    margin_before: Tuple[int, int, int],
+    margin_after: Tuple[int, int, int],
+) -> Tuple[Tuple[int, int], ...]:
     """
     Determine symmetric padding so every patch (including its context margins) stays within bounds.
     """
     padding = []
-    for dim, patch_dim, before_margin, after_margin in zip(volume_shape, patch_shape, margin_before, margin_after):
+    for dim, patch_dim, before_margin, after_margin in zip(
+        volume_shape, patch_shape, margin_before, margin_after
+    ):
         before = before_margin
         after = after_margin
         total = dim + before + after
@@ -419,12 +486,14 @@ def _compute_patch_padding(volume_shape: Tuple[int, int, int],
     return tuple(padding)
 
 
-def run_volraft_inference(reference_frame,
-                          moving_frame,
-                          checkpoint_dir: Path,
-                          use_gpu: bool = True,
-                          num_overlaps: int = 5,
-                          mask_percentile: Optional[float] = 10.0):
+def run_volraft_inference(
+    reference_frame,
+    moving_frame,
+    checkpoint_dir: Path,
+    use_gpu: bool = True,
+    num_overlaps: int = 5,
+    mask_percentile: Optional[float] = 10.0,
+):
     """
     Run VolRAFT inference on two normalized volumes and return the flow mapping reference→moving.
 
@@ -458,7 +527,9 @@ def run_volraft_inference(reference_frame,
         network=None, optimizer=None, scheduler=None
     )
     if patch_shape is None or flow_shape is None:
-        raise RuntimeError("Checkpoint does not contain patch/flow shapes required for inference.")
+        raise RuntimeError(
+            "Checkpoint does not contain patch/flow shapes required for inference."
+        )
 
     model = ModelFactory.build_instance(
         patch_shape=patch_shape,
@@ -482,19 +553,32 @@ def run_volraft_inference(reference_frame,
         ref = ref[..., np.newaxis]
         mov = mov[..., np.newaxis]
     if ref.shape[-1] > 1:
-        print(f"  Averaging {ref.shape[-1]} channels for VolRAFT (expects single channel)")
+        print(
+            f"  Averaging {ref.shape[-1]} channels for VolRAFT (expects single channel)"
+        )
         ref = ref.mean(axis=-1, keepdims=True)
         mov = mov.mean(axis=-1, keepdims=True)
 
     original_shape = reference_frame.shape[:3]
     patch_spatial = tuple(int(x) for x in patch_shape[-3:])
     flow_spatial = tuple(int(x) for x in flow_shape[-3:])
-    margin_before = tuple(max((patch_dim - flow_dim) // 2, 0) for patch_dim, flow_dim in zip(patch_spatial, flow_spatial))
-    margin_after = tuple(max(patch_dim - flow_dim - before, 0) for patch_dim, flow_dim, before in zip(patch_spatial, flow_spatial, margin_before))
+    margin_before = tuple(
+        max((patch_dim - flow_dim) // 2, 0)
+        for patch_dim, flow_dim in zip(patch_spatial, flow_spatial)
+    )
+    margin_after = tuple(
+        max(patch_dim - flow_dim - before, 0)
+        for patch_dim, flow_dim, before in zip(
+            patch_spatial, flow_spatial, margin_before
+        )
+    )
     gaussian_window = _gaussian_window_3d(flow_spatial)
 
     default_full_margin = tuple(max(flow_dim // 4, 2) for flow_dim in flow_spatial)
-    half_margin = tuple(min(m // 2, flow_dim // 2) for m, flow_dim in zip(default_full_margin, flow_spatial))
+    half_margin = tuple(
+        min(m // 2, flow_dim // 2)
+        for m, flow_dim in zip(default_full_margin, flow_spatial)
+    )
 
     core_slices = []
     for dim, hm in zip(flow_spatial, half_margin):
@@ -515,7 +599,9 @@ def run_volraft_inference(reference_frame,
     else:
         mask = _build_foreground_mask(ref, percentile=float(mask_percentile))
 
-    padding = _compute_patch_padding(original_shape, patch_spatial, margin_before, margin_after)
+    padding = _compute_patch_padding(
+        original_shape, patch_spatial, margin_before, margin_after
+    )
     pad_spec = padding + ((0, 0),)
     if any(pad_amount != (0, 0) for pad_amount in padding):
         ref = np.pad(ref, pad_spec, mode="edge")
@@ -531,9 +617,11 @@ def run_volraft_inference(reference_frame,
     y_positions = _window_starts(original_shape[1], flow_spatial[1], stride[1])
     x_positions = _window_starts(original_shape[2], flow_spatial[2], stride[2])
     total_tiles = len(z_positions) * len(y_positions) * len(x_positions)
-    print(f"  Running VolRAFT on {total_tiles} overlapping tiles "
-          f"(input patch {patch_spatial[0]}x{patch_spatial[1]}x{patch_spatial[2]}, "
-          f"predicted region {flow_spatial[0]}x{flow_spatial[1]}x{flow_spatial[2]}).")
+    print(
+        f"  Running VolRAFT on {total_tiles} overlapping tiles "
+        f"(input patch {patch_spatial[0]}x{patch_spatial[1]}x{patch_spatial[2]}, "
+        f"predicted region {flow_spatial[0]}x{flow_spatial[1]}x{flow_spatial[2]})."
+    )
 
     processed_tiles = 0
     gaussian_window = gaussian_window.astype(np.float32)
@@ -543,24 +631,41 @@ def run_volraft_inference(reference_frame,
     for z0 in z_positions:
         z_flow_start = z0 + pad_offsets[0]
         z_flow_slice = slice(z_flow_start, z_flow_start + flow_spatial[0])
-        z_patch_slice = slice(z_flow_start - margin_before[0], z_flow_start - margin_before[0] + patch_spatial[0])
+        z_patch_slice = slice(
+            z_flow_start - margin_before[0],
+            z_flow_start - margin_before[0] + patch_spatial[0],
+        )
         for y0 in y_positions:
             y_flow_start = y0 + pad_offsets[1]
             y_flow_slice = slice(y_flow_start, y_flow_start + flow_spatial[1])
-            y_patch_slice = slice(y_flow_start - margin_before[1], y_flow_start - margin_before[1] + patch_spatial[1])
+            y_patch_slice = slice(
+                y_flow_start - margin_before[1],
+                y_flow_start - margin_before[1] + patch_spatial[1],
+            )
             for x0 in x_positions:
                 x_flow_start = x0 + pad_offsets[2]
                 x_flow_slice = slice(x_flow_start, x_flow_start + flow_spatial[2])
-                x_patch_slice = slice(x_flow_start - margin_before[2], x_flow_start - margin_before[2] + patch_spatial[2])
+                x_patch_slice = slice(
+                    x_flow_start - margin_before[2],
+                    x_flow_start - margin_before[2] + patch_spatial[2],
+                )
 
                 patch_mask = mask[z_flow_slice, y_flow_slice, x_flow_slice]
                 if not np.any(patch_mask):
                     continue
 
-                ref_patch = np.ascontiguousarray(ref[z_patch_slice, y_patch_slice, x_patch_slice, :])
-                mov_patch = np.ascontiguousarray(mov[z_patch_slice, y_patch_slice, x_patch_slice, :])
-                ref_tensor = torch.from_numpy(np.moveaxis(ref_patch, -1, 0)[None]).to(device)
-                mov_tensor = torch.from_numpy(np.moveaxis(mov_patch, -1, 0)[None]).to(device)
+                ref_patch = np.ascontiguousarray(
+                    ref[z_patch_slice, y_patch_slice, x_patch_slice, :]
+                )
+                mov_patch = np.ascontiguousarray(
+                    mov[z_patch_slice, y_patch_slice, x_patch_slice, :]
+                )
+                ref_tensor = torch.from_numpy(np.moveaxis(ref_patch, -1, 0)[None]).to(
+                    device
+                )
+                mov_tensor = torch.from_numpy(np.moveaxis(mov_patch, -1, 0)[None]).to(
+                    device
+                )
 
                 with torch.no_grad():
                     flow_pred = model.forward(ref_tensor, mov_tensor)
@@ -568,7 +673,9 @@ def run_volraft_inference(reference_frame,
                         flow_pred = flow_pred[-1]
 
                 flow_np_raw = flow_pred.squeeze(0).detach().cpu().numpy()
-                flow_np_raw = np.moveaxis(flow_np_raw, 0, -1).astype(np.float32, copy=False)
+                flow_np_raw = np.moveaxis(flow_np_raw, 0, -1).astype(
+                    np.float32, copy=False
+                )
 
                 flow_np = np.empty_like(flow_np_raw)
                 flow_np[..., 0] = flow_np_raw[..., 2]  # dx
@@ -588,7 +695,9 @@ def run_volraft_inference(reference_frame,
                 processed_tiles += 1
 
     if processed_tiles == 0:
-        raise RuntimeError("Foreground mask eliminated all patches; cannot run VolRAFT inference.")
+        raise RuntimeError(
+            "Foreground mask eliminated all patches; cannot run VolRAFT inference."
+        )
 
     print(f"  Processed {processed_tiles} / {total_tiles} tiles.")
 
@@ -597,7 +706,9 @@ def run_volraft_inference(reference_frame,
     flow_accum[~valid] = 0
 
     if any(pad != (0, 0) for pad in padding):
-        slices = tuple(slice(pad[0], pad[0] + orig) for pad, orig in zip(padding, original_shape))
+        slices = tuple(
+            slice(pad[0], pad[0] + orig) for pad, orig in zip(padding, original_shape)
+        )
         flow_accum = flow_accum[slices]
         mask = mask[slices]
 
@@ -605,7 +716,7 @@ def run_volraft_inference(reference_frame,
     return flow_accum.astype(np.float32, copy=False)
 
 
-def create_displaced_frame_with_generator(video, generator_type='high_disp'):
+def create_displaced_frame_with_generator(video, generator_type="high_disp"):
     """
     Create a second 3D frame with synthetic motion displacements.
 
@@ -616,22 +727,22 @@ def create_displaced_frame_with_generator(video, generator_type='high_disp'):
     Returns:
         Tuple of (displaced_video, ground_truth_flow)
     """
-    print(f"\nCreating displaced frame with synthetic motion...")
+    print("\nCreating displaced frame with synthetic motion...")
     print(f"  Generator type: {generator_type}")
 
     depth, height, width = video.shape[:3]
 
     # Select generator
-    if generator_type == 'default':
+    if generator_type == "default":
         generator = get_default_3d_generator()
-    elif generator_type == 'low_disp':
+    elif generator_type == "low_disp":
         generator = get_low_disp_3d_generator()
-    elif generator_type == 'test':
+    elif generator_type == "test":
         generator = get_test_3d_generator()
-    elif generator_type == 'high_disp':
+    elif generator_type == "high_disp":
         generator = get_high_disp_3d_generator()
     else:
-        print(f"  Unknown generator type, using high_disp")
+        print("  Unknown generator type, using high_disp")
         generator = get_high_disp_3d_generator()
 
     # Generate flow field
@@ -639,13 +750,16 @@ def create_displaced_frame_with_generator(video, generator_type='high_disp'):
 
     # Print flow statistics
     print(f"  Ground truth flow shape: {flow_gt.shape}")
-    print(f"  Flow magnitude stats:")
+    print("  Flow magnitude stats:")
     print(
-        f"    dx: min={flow_gt[:, :, :, 0].min():.2f}, max={flow_gt[:, :, :, 0].max():.2f}, mean={flow_gt[:, :, :, 0].mean():.2f}")
+        f"    dx: min={flow_gt[:, :, :, 0].min():.2f}, max={flow_gt[:, :, :, 0].max():.2f}, mean={flow_gt[:, :, :, 0].mean():.2f}"
+    )
     print(
-        f"    dy: min={flow_gt[:, :, :, 1].min():.2f}, max={flow_gt[:, :, :, 1].max():.2f}, mean={flow_gt[:, :, :, 1].mean():.2f}")
+        f"    dy: min={flow_gt[:, :, :, 1].min():.2f}, max={flow_gt[:, :, :, 1].max():.2f}, mean={flow_gt[:, :, :, 1].mean():.2f}"
+    )
     print(
-        f"    dz: min={flow_gt[:, :, :, 2].min():.2f}, max={flow_gt[:, :, :, 2].max():.2f}, mean={flow_gt[:, :, :, 2].mean():.2f}")
+        f"    dz: min={flow_gt[:, :, :, 2].min():.2f}, max={flow_gt[:, :, :, 2].max():.2f}, mean={flow_gt[:, :, :, 2].mean():.2f}"
+    )
 
     # Create displaced frame using backward warping with negated flow
     # This simulates forward motion: backward_warp(video, -flow) ≈ forward_warp(video, flow)
@@ -655,10 +769,14 @@ def create_displaced_frame_with_generator(video, generator_type='high_disp'):
     # Crop boundaries to remove invalid regions (10 pixels from each edge)
     boundary = 10
     if displaced.ndim == 4:  # Has channels
-        displaced = displaced[boundary:-boundary, boundary:-boundary, boundary:-boundary, :]
+        displaced = displaced[
+            boundary:-boundary, boundary:-boundary, boundary:-boundary, :
+        ]
         flow_gt = flow_gt[boundary:-boundary, boundary:-boundary, boundary:-boundary, :]
     else:
-        displaced = displaced[boundary:-boundary, boundary:-boundary, boundary:-boundary]
+        displaced = displaced[
+            boundary:-boundary, boundary:-boundary, boundary:-boundary
+        ]
         flow_gt = flow_gt[boundary:-boundary, boundary:-boundary, boundary:-boundary, :]
 
     print(f"  Warping complete, cropped {boundary}px boundaries")
@@ -681,8 +799,12 @@ def evaluate_flow_accuracy(flow_est, flow_gt, boundary=25):
     """
     # Crop boundaries
     if boundary > 0:
-        flow_est_cropped = flow_est[boundary:-boundary, boundary:-boundary, boundary:-boundary, :]
-        flow_gt_cropped = flow_gt[boundary:-boundary, boundary:-boundary, boundary:-boundary, :]
+        flow_est_cropped = flow_est[
+            boundary:-boundary, boundary:-boundary, boundary:-boundary, :
+        ]
+        flow_gt_cropped = flow_gt[
+            boundary:-boundary, boundary:-boundary, boundary:-boundary, :
+        ]
     else:
         flow_est_cropped = flow_est
         flow_gt_cropped = flow_gt
@@ -709,42 +831,89 @@ def visualize_in_napari(original, displaced, corrected, flow_est=None, flow_gt=N
     viewer = napari.Viewer(title="3D Motion Correction Test")
 
     # Add original volume
-    viewer.add_image(original, name="Original", colormap='green', blending='additive', contrast_limits=[0, 1],
-        visible=True, opacity=0.7)
+    viewer.add_image(
+        original,
+        name="Original",
+        colormap="green",
+        blending="additive",
+        contrast_limits=[0, 1],
+        visible=True,
+        opacity=0.7,
+    )
 
     # Add displaced volume
-    viewer.add_image(displaced, name="Displaced (Synthetic Motion)", colormap='magenta', blending='additive',
-        contrast_limits=[0, 1], visible=True, opacity=0.7)
+    viewer.add_image(
+        displaced,
+        name="Displaced (Synthetic Motion)",
+        colormap="magenta",
+        blending="additive",
+        contrast_limits=[0, 1],
+        visible=True,
+        opacity=0.7,
+    )
 
     # Add corrected volume
-    viewer.add_image(corrected, name="Corrected (Motion Compensated)", colormap='cyan', blending='additive',
-        contrast_limits=[0, 1], visible=True, opacity=1.0)
+    viewer.add_image(
+        corrected,
+        name="Corrected (Motion Compensated)",
+        colormap="cyan",
+        blending="additive",
+        contrast_limits=[0, 1],
+        visible=True,
+        opacity=1.0,
+    )
 
     # Add flow magnitude for estimated flow - add channel dimension for napari
     if flow_est is not None:
-        flow_est_magnitude = np.sqrt(flow_est[:, :, :, 0] ** 2 + flow_est[:, :, :, 1] ** 2 + flow_est[:, :, :, 2] ** 2)
+        flow_est_magnitude = np.sqrt(
+            flow_est[:, :, :, 0] ** 2
+            + flow_est[:, :, :, 1] ** 2
+            + flow_est[:, :, :, 2] ** 2
+        )
         # Add empty channel dimension to match image dimensions
         flow_est_magnitude = flow_est_magnitude[..., np.newaxis]
-        viewer.add_image(flow_est_magnitude, name="Estimated Flow Magnitude", colormap='viridis', visible=False,
-            contrast_limits=[0, flow_est_magnitude.max()])
+        viewer.add_image(
+            flow_est_magnitude,
+            name="Estimated Flow Magnitude",
+            colormap="viridis",
+            visible=False,
+            contrast_limits=[0, flow_est_magnitude.max()],
+        )
 
     # Add flow magnitude for ground truth - use same colormap as estimated
     if flow_gt is not None:
-        flow_gt_magnitude = np.sqrt(flow_gt[:, :, :, 0] ** 2 + flow_gt[:, :, :, 1] ** 2 + flow_gt[:, :, :, 2] ** 2)
+        flow_gt_magnitude = np.sqrt(
+            flow_gt[:, :, :, 0] ** 2
+            + flow_gt[:, :, :, 1] ** 2
+            + flow_gt[:, :, :, 2] ** 2
+        )
         # Add empty channel dimension to match image dimensions
         flow_gt_magnitude = flow_gt_magnitude[..., np.newaxis]
-        viewer.add_image(flow_gt_magnitude, name="Ground Truth Flow Magnitude", colormap='viridis', visible=False,
-            contrast_limits=[0, flow_gt_magnitude.max()])
+        viewer.add_image(
+            flow_gt_magnitude,
+            name="Ground Truth Flow Magnitude",
+            colormap="viridis",
+            visible=False,
+            contrast_limits=[0, flow_gt_magnitude.max()],
+        )
 
         # Add flow error magnitude
         flow_error = flow_est - flow_gt if flow_est is not None else None
         if flow_error is not None:
             flow_error_magnitude = np.sqrt(
-                flow_error[:, :, :, 0] ** 2 + flow_error[:, :, :, 1] ** 2 + flow_error[:, :, :, 2] ** 2)
+                flow_error[:, :, :, 0] ** 2
+                + flow_error[:, :, :, 1] ** 2
+                + flow_error[:, :, :, 2] ** 2
+            )
             # Add channel dimension to prevent transposition issue in napari
             flow_error_magnitude = flow_error_magnitude[..., np.newaxis]
-            viewer.add_image(flow_error_magnitude, name="Flow Error Magnitude", colormap='hot', visible=False,
-                contrast_limits=[0, flow_error_magnitude.max()])
+            viewer.add_image(
+                flow_error_magnitude,
+                name="Flow Error Magnitude",
+                colormap="hot",
+                visible=False,
+                contrast_limits=[0, flow_error_magnitude.max()],
+            )
 
     print("\nViewer controls:")
     print("  - Use slider at bottom to navigate through Z slices")
@@ -814,47 +983,59 @@ def main():
     processed = process_3d_stack(video_3d)
 
     # Create displaced version with synthetic 3D motion
-    displaced, flow_gt = create_displaced_frame_with_generator(processed, generator_type="high_disp", # generator_type='low_disp'
+    displaced, flow_gt = create_displaced_frame_with_generator(
+        processed,
+        generator_type="high_disp",  # generator_type='low_disp'
         # Use high displacement with enhanced expansion
     )
 
     # Crop original to match displaced size after boundary removal
     boundary = 10
     if processed.ndim == 4:  # Has channels
-        original_cropped = processed[boundary:-boundary, boundary:-boundary, boundary:-boundary, :]
+        original_cropped = processed[
+            boundary:-boundary, boundary:-boundary, boundary:-boundary, :
+        ]
     else:
-        original_cropped = processed[boundary:-boundary, boundary:-boundary, boundary:-boundary]
+        original_cropped = processed[
+            boundary:-boundary, boundary:-boundary, boundary:-boundary
+        ]
 
     print("\nPreparing frames for motion correction...")
 
     # Set up VolRAFT parameters
     volraft_params = {
-        'checkpoint_dir': VOLRAFT_CHECKPOINT_DIR,
-        'use_gpu': True,
-        'num_overlaps': 5,
-        'mask_percentile': 10.0,
+        "checkpoint_dir": VOLRAFT_CHECKPOINT_DIR,
+        "use_gpu": True,
+        "num_overlaps": 5,
+        "mask_percentile": 10.0,
     }
 
     # Compute 3D optical flow (preprocessing is done internally)
     if mode == "volraft":
-        flow_field = -compute_3d_optical_flow(original_cropped, displaced, volraft_params)
+        flow_field = -compute_3d_optical_flow(
+            original_cropped, displaced, volraft_params
+        )
     elif mode == "torch":
         legacy_flow_params = {
-            'alpha': (0.25, 0.25, 0.25),
-            'iterations': 100,
-            'a_data': 0.45,
-            'a_smooth': 1.0,
-            'weight': np.array([0.5, 0.5], dtype=np.float64),
-            'levels': 50,
-            'eta': 0.8,
-            'update_lag': 5,
-            'min_level': 5,
-            'const_assumption': 'gc',
-            'uvw': None,
+            "alpha": (0.25, 0.25, 0.25),
+            "iterations": 100,
+            "a_data": 0.45,
+            "a_smooth": 1.0,
+            "weight": np.array([0.5, 0.5], dtype=np.float64),
+            "levels": 50,
+            "eta": 0.8,
+            "update_lag": 5,
+            "min_level": 5,
+            "const_assumption": "gc",
+            "uvw": None,
         }
-        flow_field = compute_3d_optical_flow_torch(original_cropped, displaced, legacy_flow_params)
+        flow_field = compute_3d_optical_flow_torch(
+            original_cropped, displaced, legacy_flow_params
+        )
     else:
-        raise ValueError(f"Unsupported mode '{mode}'. Use 'volraft' (default) or 'torch'.")
+        raise ValueError(
+            f"Unsupported mode '{mode}'. Use 'volraft' (default) or 'torch'."
+        )
 
     # Apply motion correction using imregister_wrapper (backwards warping)
     print("\nApplying motion correction...")
@@ -865,7 +1046,8 @@ def main():
         flow_field[:, :, :, 1],
         flow_field[:, :, :, 2],
         original_cropped,
-        interpolation_method='cubic')
+        interpolation_method="cubic",
+    )
 
     # Evaluate accuracy if we have ground truth
     epe = evaluate_flow_accuracy(flow_field, flow_gt, boundary=25)
@@ -878,9 +1060,15 @@ def main():
     diff_original_corrected = np.mean(np.abs(original_cropped - corrected))
     diff_original_displaced = np.mean(np.abs(original_cropped - displaced))
 
-    print(f"  Mean absolute difference (original vs displaced): {diff_original_displaced:.4f}")
-    print(f"  Mean absolute difference (original vs corrected): {diff_original_corrected:.4f}")
-    print(f"  Improvement ratio: {diff_original_displaced / diff_original_corrected:.2f}x")
+    print(
+        f"  Mean absolute difference (original vs displaced): {diff_original_displaced:.4f}"
+    )
+    print(
+        f"  Mean absolute difference (original vs corrected): {diff_original_corrected:.4f}"
+    )
+    print(
+        f"  Improvement ratio: {diff_original_displaced / diff_original_corrected:.2f}x"
+    )
 
     # Visualize in napari
     visualize_in_napari(original_cropped, displaced, corrected, flow_field, flow_gt)

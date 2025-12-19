@@ -12,12 +12,12 @@ import pytest
 from flowreg3d.util.image_processing_3D import (
     normalize as normalize_cpu,
     apply_gaussian_filter as apply_gaussian_cpu,
-    gaussian_filter_1d_half_kernel as gaussian_half_cpu
+    gaussian_filter_1d_half_kernel as gaussian_half_cpu,
 )
 from flowreg3d.util.torch.image_processing_3D import (
     normalize as normalize_torch,
     apply_gaussian_filter as apply_gaussian_torch,
-    gaussian_filter_1d_half_kernel as gaussian_half_torch
+    gaussian_filter_1d_half_kernel as gaussian_half_torch,
 )
 
 
@@ -29,8 +29,8 @@ class TestNormalize:
         np.random.seed(42)
         data = np.random.randn(16, 24, 32, 3).astype(np.float32)
 
-        cpu_result = normalize_cpu(data, channel_normalization='together')
-        torch_result = normalize_torch(data, channel_normalization='together')
+        cpu_result = normalize_cpu(data, channel_normalization="together")
+        torch_result = normalize_torch(data, channel_normalization="together")
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
 
@@ -43,8 +43,8 @@ class TestNormalize:
         np.random.seed(42)
         data = np.random.randn(16, 24, 32, 3).astype(np.float32)
 
-        cpu_result = normalize_cpu(data, channel_normalization='separate')
-        torch_result = normalize_torch(data, channel_normalization='separate')
+        cpu_result = normalize_cpu(data, channel_normalization="separate")
+        torch_result = normalize_torch(data, channel_normalization="separate")
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
         assert cpu_result.dtype == np.float64
@@ -55,8 +55,8 @@ class TestNormalize:
         data = np.random.randn(16, 24, 32, 3).astype(np.float32)
         ref = np.random.randn(16, 24, 32, 3).astype(np.float32)
 
-        cpu_result = normalize_cpu(data, ref=ref, channel_normalization='separate')
-        torch_result = normalize_torch(data, ref=ref, channel_normalization='separate')
+        cpu_result = normalize_cpu(data, ref=ref, channel_normalization="separate")
+        torch_result = normalize_torch(data, ref=ref, channel_normalization="separate")
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
 
@@ -65,8 +65,8 @@ class TestNormalize:
         np.random.seed(42)
         data = np.random.randn(8, 16, 24, 32, 2).astype(np.float32)
 
-        cpu_result = normalize_cpu(data, channel_normalization='separate')
-        torch_result = normalize_torch(data, channel_normalization='separate')
+        cpu_result = normalize_cpu(data, channel_normalization="separate")
+        torch_result = normalize_torch(data, channel_normalization="separate")
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
 
@@ -74,8 +74,8 @@ class TestNormalize:
         """Test normalization on uniform data (all values same)."""
         data = np.ones((8, 8, 8, 2), dtype=np.float32) * 5.0
 
-        cpu_result = normalize_cpu(data, channel_normalization='separate')
-        torch_result = normalize_torch(data, channel_normalization='separate')
+        cpu_result = normalize_cpu(data, channel_normalization="separate")
+        torch_result = normalize_torch(data, channel_normalization="separate")
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
         # Should return zeros (arr - min_val) when all values are same
@@ -86,8 +86,8 @@ class TestNormalize:
         np.random.seed(42)
         data = np.random.randn(16, 24, 32).astype(np.float32)
 
-        cpu_result = normalize_cpu(data, channel_normalization='separate')
-        torch_result = normalize_torch(data, channel_normalization='separate')
+        cpu_result = normalize_cpu(data, channel_normalization="separate")
+        torch_result = normalize_torch(data, channel_normalization="separate")
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
         assert cpu_result.dtype == np.float64
@@ -96,8 +96,8 @@ class TestNormalize:
         """Test epsilon handling in global normalization."""
         data = np.array([[[1.0, 2.0, 3.0]]], dtype=np.float32)
 
-        cpu_result = normalize_cpu(data, channel_normalization='together', eps=1e-8)
-        torch_result = normalize_torch(data, channel_normalization='together', eps=1e-8)
+        cpu_result = normalize_cpu(data, channel_normalization="together", eps=1e-8)
+        torch_result = normalize_torch(data, channel_normalization="together", eps=1e-8)
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-10)
 
@@ -107,11 +107,13 @@ class TestNormalize:
         data = np.random.randn(16, 24, 32, 3).astype(np.float32)
         data_tensor = torch.from_numpy(data)
 
-        cpu_result = normalize_cpu(data, channel_normalization='separate')
-        torch_result = normalize_torch(data_tensor, channel_normalization='separate')
+        cpu_result = normalize_cpu(data, channel_normalization="separate")
+        torch_result = normalize_torch(data_tensor, channel_normalization="separate")
 
         assert not torch_result.is_cuda  # Ensure it's on CPU
-        np.testing.assert_allclose(cpu_result, torch_result.cpu().numpy(), rtol=1e-10, atol=1e-10)
+        np.testing.assert_allclose(
+            cpu_result, torch_result.cpu().numpy(), rtol=1e-10, atol=1e-10
+        )
 
     def test_normalize_cuda(self):
         """Test normalization on CUDA device if available."""
@@ -122,11 +124,13 @@ class TestNormalize:
         data = np.random.randn(16, 24, 32, 3).astype(np.float32)
         data_tensor = torch.from_numpy(data).cuda()
 
-        cpu_result = normalize_cpu(data, channel_normalization='separate')
-        torch_result = normalize_torch(data_tensor, channel_normalization='separate')
+        cpu_result = normalize_cpu(data, channel_normalization="separate")
+        torch_result = normalize_torch(data_tensor, channel_normalization="separate")
 
         assert torch_result.is_cuda
-        np.testing.assert_allclose(cpu_result, torch_result.cpu().numpy(), rtol=1e-10, atol=1e-10)
+        np.testing.assert_allclose(
+            cpu_result, torch_result.cpu().numpy(), rtol=1e-10, atol=1e-10
+        )
 
 
 class TestGaussianFilter:
@@ -138,8 +142,8 @@ class TestGaussianFilter:
         data = np.random.randn(16, 24, 32, 2).astype(np.float32)
         sigma = np.array([1.5, 1.0, 2.0])  # sx, sy, sz
 
-        cpu_result = apply_gaussian_cpu(data, sigma, mode='reflect', truncate=4.0)
-        torch_result = apply_gaussian_torch(data, sigma, mode='reflect', truncate=4.0)
+        cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect", truncate=4.0)
+        torch_result = apply_gaussian_torch(data, sigma, mode="reflect", truncate=4.0)
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-8)
 
@@ -151,13 +155,15 @@ class TestGaussianFilter:
         """Test 3D Gaussian filtering with per-channel sigmas."""
         np.random.seed(42)
         data = np.random.randn(16, 24, 32, 2).astype(np.float32)
-        sigma = np.array([
-            [1.0, 1.5, 2.0],  # Channel 0
-            [2.0, 1.0, 1.5],  # Channel 1
-        ])
+        sigma = np.array(
+            [
+                [1.0, 1.5, 2.0],  # Channel 0
+                [2.0, 1.0, 1.5],  # Channel 1
+            ]
+        )
 
-        cpu_result = apply_gaussian_cpu(data, sigma, mode='reflect', truncate=3.0)
-        torch_result = apply_gaussian_torch(data, sigma, mode='reflect', truncate=3.0)
+        cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect", truncate=3.0)
+        torch_result = apply_gaussian_torch(data, sigma, mode="reflect", truncate=3.0)
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-8)
 
@@ -167,8 +173,8 @@ class TestGaussianFilter:
         data = np.random.randn(8, 16, 24, 32, 2).astype(np.float32)
         sigma = np.array([1.5, 1.0, 2.0, 0.8])  # sx, sy, sz, st
 
-        cpu_result = apply_gaussian_cpu(data, sigma, mode='reflect', truncate=4.0)
-        torch_result = apply_gaussian_torch(data, sigma, mode='reflect', truncate=4.0)
+        cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect", truncate=4.0)
+        torch_result = apply_gaussian_torch(data, sigma, mode="reflect", truncate=4.0)
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-8)
 
@@ -178,8 +184,8 @@ class TestGaussianFilter:
         data = np.random.randn(16, 24, 32, 2).astype(np.float32)
         sigma = np.array([0.0, 0.0, 0.0])
 
-        cpu_result = apply_gaussian_cpu(data, sigma, mode='reflect')
-        torch_result = apply_gaussian_torch(data, sigma, mode='reflect')
+        cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect")
+        torch_result = apply_gaussian_torch(data, sigma, mode="reflect")
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-8)
 
@@ -190,11 +196,20 @@ class TestGaussianFilter:
         sigma = np.array([1.0, 1.0, 1.0])
 
         for truncate in [2.0, 3.0, 4.0, 6.0]:
-            cpu_result = apply_gaussian_cpu(data, sigma, mode='reflect', truncate=truncate)
-            torch_result = apply_gaussian_torch(data, sigma, mode='reflect', truncate=truncate)
+            cpu_result = apply_gaussian_cpu(
+                data, sigma, mode="reflect", truncate=truncate
+            )
+            torch_result = apply_gaussian_torch(
+                data, sigma, mode="reflect", truncate=truncate
+            )
 
-            np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-8,
-                                     err_msg=f"Failed for truncate={truncate}")
+            np.testing.assert_allclose(
+                cpu_result,
+                torch_result,
+                rtol=1e-6,
+                atol=1e-8,
+                err_msg=f"Failed for truncate={truncate}",
+            )
 
     def test_gaussian_mode_enforcement(self):
         """Test that non-reflect modes raise an error."""
@@ -202,11 +217,10 @@ class TestGaussianFilter:
         sigma = np.array([1.0, 1.0, 1.0])
 
         with pytest.raises(ValueError, match="Only 'reflect' mode is supported"):
-            _ = apply_gaussian_torch(data, sigma, mode='constant')
+            _ = apply_gaussian_torch(data, sigma, mode="constant")
 
         with pytest.raises(ValueError, match="Only 'reflect' mode is supported"):
-            _ = apply_gaussian_torch(data, sigma, mode='wrap')
-
+            _ = apply_gaussian_torch(data, sigma, mode="wrap")
 
     def test_gaussian_3d_direct(self):
         """Test direct 3D Gaussian filtering (unsupported dimensionality path)."""
@@ -214,8 +228,8 @@ class TestGaussianFilter:
         data = np.random.randn(16, 24, 32).astype(np.float32)  # 3D without channels
         sigma = np.array([1.0, 1.5, 2.0])
 
-        cpu_result = apply_gaussian_cpu(data, sigma, mode='reflect')
-        torch_result = apply_gaussian_torch(data, sigma, mode='reflect')
+        cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect")
+        torch_result = apply_gaussian_torch(data, sigma, mode="reflect")
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-8)
 
@@ -225,8 +239,8 @@ class TestGaussianFilter:
         data = np.random.randn(8, 12, 16, 1).astype(np.float64)
         sigma = np.array([1.0, 1.0, 1.0])
 
-        cpu_result = apply_gaussian_cpu(data, sigma, mode='reflect')
-        torch_result = apply_gaussian_torch(data, sigma, mode='reflect')
+        cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect")
+        torch_result = apply_gaussian_torch(data, sigma, mode="reflect")
 
         np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-10, atol=1e-12)
         assert cpu_result.dtype == np.float64
@@ -239,11 +253,13 @@ class TestGaussianFilter:
         data_tensor = torch.from_numpy(data)
         sigma = np.array([1.0, 1.5, 0.5])
 
-        cpu_result = apply_gaussian_cpu(data, sigma, mode='reflect')
-        torch_result = apply_gaussian_torch(data_tensor, sigma, mode='reflect')
+        cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect")
+        torch_result = apply_gaussian_torch(data_tensor, sigma, mode="reflect")
 
         assert not torch_result.is_cuda  # Ensure it's on CPU
-        np.testing.assert_allclose(cpu_result, torch_result.cpu().numpy(), rtol=1e-6, atol=1e-8)
+        np.testing.assert_allclose(
+            cpu_result, torch_result.cpu().numpy(), rtol=1e-6, atol=1e-8
+        )
 
     def test_gaussian_cuda(self):
         """Test Gaussian filtering on CUDA device if available."""
@@ -255,11 +271,13 @@ class TestGaussianFilter:
         data_tensor = torch.from_numpy(data).cuda()
         sigma = np.array([1.0, 1.5, 0.5])
 
-        cpu_result = apply_gaussian_cpu(data, sigma, mode='reflect')
-        torch_result = apply_gaussian_torch(data_tensor, sigma, mode='reflect')
+        cpu_result = apply_gaussian_cpu(data, sigma, mode="reflect")
+        torch_result = apply_gaussian_torch(data_tensor, sigma, mode="reflect")
 
         assert torch_result.is_cuda
-        np.testing.assert_allclose(cpu_result, torch_result.cpu().numpy(), rtol=1e-6, atol=1e-8)
+        np.testing.assert_allclose(
+            cpu_result, torch_result.cpu().numpy(), rtol=1e-6, atol=1e-8
+        )
 
 
 class TestGaussianHalfKernel:
@@ -296,8 +314,13 @@ class TestGaussianHalfKernel:
             cpu_result = gaussian_half_cpu(buffer_np, sigma_t, truncate=4.0)
             torch_result = gaussian_half_torch(buffer_np, sigma_t, truncate=4.0)
 
-            np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-9,
-                                     err_msg=f"Failed for sigma_t={sigma_t}")
+            np.testing.assert_allclose(
+                cpu_result,
+                torch_result,
+                rtol=1e-6,
+                atol=1e-9,
+                err_msg=f"Failed for sigma_t={sigma_t}",
+            )
 
     def test_half_kernel_torch_tensors(self):
         """Test half-kernel with PyTorch tensor inputs."""
@@ -322,7 +345,9 @@ class TestGaussianHalfKernel:
         cpu_result = gaussian_half_cpu(buffer_np, sigma_t, truncate=4.0)
         torch_result = gaussian_half_torch(buffer_torch, sigma_t, truncate=4.0)
 
-        np.testing.assert_allclose(cpu_result, torch_result.cpu().numpy(), rtol=1e-6, atol=1e-9)
+        np.testing.assert_allclose(
+            cpu_result, torch_result.cpu().numpy(), rtol=1e-6, atol=1e-9
+        )
 
     def test_half_kernel_single_frame(self):
         """Test half-kernel with single frame in buffer."""
@@ -361,8 +386,13 @@ class TestGaussianHalfKernel:
             cpu_result = gaussian_half_cpu(buffer, sigma_t, truncate=truncate)
             torch_result = gaussian_half_torch(buffer, sigma_t, truncate=truncate)
 
-            np.testing.assert_allclose(cpu_result, torch_result, rtol=1e-6, atol=1e-9,
-                                     err_msg=f"Failed for truncate={truncate}")
+            np.testing.assert_allclose(
+                cpu_result,
+                torch_result,
+                rtol=1e-6,
+                atol=1e-9,
+                err_msg=f"Failed for truncate={truncate}",
+            )
 
     def test_half_kernel_float64(self):
         """Test half-kernel with float64 data."""
@@ -403,7 +433,9 @@ class TestGaussianHalfKernel:
             buffer_np.append(frame.numpy())
         cpu_result = gaussian_half_cpu(buffer_np, sigma_t, truncate=4.0)
 
-        np.testing.assert_allclose(cpu_result, torch_result.numpy(), rtol=1e-6, atol=1e-9)
+        np.testing.assert_allclose(
+            cpu_result, torch_result.numpy(), rtol=1e-6, atol=1e-9
+        )
 
     def test_half_kernel_cuda(self):
         """Test half-kernel on CUDA device if available."""
@@ -416,7 +448,7 @@ class TestGaussianHalfKernel:
 
         buffer = deque(maxlen=buffer_size)
         for _ in range(buffer_size):
-            frame = torch.randn(*frame_shape, dtype=torch.float32, device='cuda')
+            frame = torch.randn(*frame_shape, dtype=torch.float32, device="cuda")
             buffer.append(frame)
 
         sigma_t = 1.0
@@ -429,7 +461,9 @@ class TestGaussianHalfKernel:
             buffer_cpu.append(frame.cpu().numpy())
         cpu_result = gaussian_half_cpu(buffer_cpu, sigma_t, truncate=4.0)
 
-        np.testing.assert_allclose(cpu_result, torch_result.cpu().numpy(), rtol=1e-5, atol=1e-8)
+        np.testing.assert_allclose(
+            cpu_result, torch_result.cpu().numpy(), rtol=1e-5, atol=1e-8
+        )
 
 
 if __name__ == "__main__":
