@@ -92,7 +92,7 @@ jobs:
       - name: Test wheel imports
         run: |
           python -c "import flowreg3d; print('flowreg3D version:', getattr(flowreg3d, '__version__', 'unknown'))"
-          python -c "from flowreg3d.core.optical_flow_3d import get_displacement_3d; print('Core imports working')"
+          python -c "from flowreg3d.core.optical_flow_3d import get_displacement; print('Core imports working')"
 
   sdist-smoke:
     if: startsWith(github.ref, 'refs/tags/v')
