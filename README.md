@@ -2,6 +2,7 @@
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/flowreg3d)](https://pypi.org/project/flowreg3d/)
 [![PyPI - License](https://img.shields.io/pypi/l/flowreg3d)](LICENSE)
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/flowreg3d)](https://pypistats.org/packages/flowreg3d)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/flowreg3d?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=all+time+downloads)](https://pepy.tech/projects/flowreg3d)
 [![GitHub Actions](https://github.com/FlowRegSuite/flowreg3d/actions/workflows/pypi-release.yml/badge.svg)](https://github.com/FlowRegSuite/flowreg3d/actions/workflows/pypi-release.yml)
 
 ## 🚧 Under Development
@@ -17,15 +18,15 @@ This project is still in an **alpha stage**. Expect rapid changes, incomplete fe
 
 Python implementation of volumetric optical flow for motion correction in 3D fluorescence microscopy. Building on the 2D Flow-Registration insights, flowreg3D provides **natively 3D dense** motion analysis and correction with **subpixel-precision** for non-rigid motion volumetric microscopy data.
 
-![Fig1](https://raw.githubusercontent.com/flowregsuite/flowreg3D/3df1fddabd74b1f33e3361a8abcb12239eef7f6b/img/comparison.png)
-
-
 **Related projects**
 - Flow-Registration: https://github.com/FlowRegSuite/flow_registration
 - PyFlowReg: https://github.com/FlowRegSuite/pyflowreg
 - ImageJ/Fiji plugin: https://github.com/FlowRegSuite/flow_registration_IJ
 - Napari plugin: https://github.com/FlowRegSuite/napari-flowreg
 
+
+![Fig1](https://raw.githubusercontent.com/flowregsuite/flowreg3D/3df1fddabd74b1f33e3361a8abcb12239eef7f6b/img/comparison.png)
+Alignment of two 2P imaging stacks with difficult, synthetic non-rigid motion patterns.
 
 ## Features
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "flowreg3d"
 dynamic = ["version"]
-description = "Variational optical-flow motion estimation and correction for 2-photon microscopy 3D videos"
+description = "3D Variational optical-flow motion estimation and correction for 2-photon microscopy 3D videos"
 readme = "README.md"
 authors = [
     { name="Philipp Flotho", email="Philipp.Flotho@uni-saarland.de" }

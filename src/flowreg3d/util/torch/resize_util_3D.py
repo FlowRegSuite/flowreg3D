@@ -260,21 +260,17 @@ def imresize_fused_gauss_cubic3D(
     Returns:
         Resized image with same dtype as input
     """
-    # Determine compute dtype based on input
+    # Determine compute dtype based on input (force float32 like NumPy backend)
     if isinstance(img, np.ndarray):
         input_numpy = True
         input_dtype = img.dtype
-        compute_dtype = np.float64 if input_dtype == np.float64 else np.float32
+        compute_dtype = np.float32
         img_tensor = torch.from_numpy(img.astype(compute_dtype))
-        compute_torch_dtype = (
-            torch.float64 if compute_dtype == np.float64 else torch.float32
-        )
+        compute_torch_dtype = torch.float32
     else:
         input_numpy = False
         input_dtype = img.dtype
-        compute_torch_dtype = (
-            torch.float64 if img.dtype == torch.float64 else torch.float32
-        )
+        compute_torch_dtype = torch.float32
         img_tensor = img.to(compute_torch_dtype)
 
     device = img_tensor.device
