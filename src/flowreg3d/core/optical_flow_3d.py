@@ -152,6 +152,75 @@ def get_motion_tensor_gc(f1, f2, hz, hy, hx):
     return J11, J22, J33, J44, J12, J13, J23, J14, J24, J34
 
 
+def get_motion_tensor_cs(f1, f2, hz, hy, hx):
+    eps = 80.0
+    eps2 = eps * eps
+    eps4 = eps2 * eps2
+
+    f1p = np.pad(f1, ((1, 1), (1, 1), (1, 1)), mode="symmetric")
+    f2p = np.pad(f2, ((1, 1), (1, 1), (1, 1)), mode="symmetric")
+
+    It = f2p - f1p
+
+    gz, gy, gx = np.gradient(f2p)
+    gx = np.pad(gx[1:-1, 1:-1, 1:-1], 1, mode="symmetric")
+    gy = np.pad(gy[1:-1, 1:-1, 1:-1], 1, mode="symmetric")
+    gz = np.pad(gz[1:-1, 1:-1, 1:-1], 1, mode="symmetric")
+    It = np.pad(It[1:-1, 1:-1, 1:-1], 1, mode="symmetric")
+
+    offsets = [
+        (dz, dy, dx)
+        for dz in (-1, 0, 1)
+        for dy in (-1, 0, 1)
+        for dx in (-1, 0, 1)
+        if not (dz == 0 and dy == 0 and dx == 0)
+    ]
+    invN = 1.0 / float(len(offsets))
+
+    J11 = np.zeros_like(f1p, dtype=np.float64)
+    J22 = np.zeros_like(f1p, dtype=np.float64)
+    J33 = np.zeros_like(f1p, dtype=np.float64)
+    J44 = np.zeros_like(f1p, dtype=np.float64)
+    J12 = np.zeros_like(f1p, dtype=np.float64)
+    J13 = np.zeros_like(f1p, dtype=np.float64)
+    J23 = np.zeros_like(f1p, dtype=np.float64)
+    J14 = np.zeros_like(f1p, dtype=np.float64)
+    J24 = np.zeros_like(f1p, dtype=np.float64)
+    J34 = np.zeros_like(f1p, dtype=np.float64)
+
+    for dz, dy, dx in offsets:
+        delIm = np.roll(f2p, shift=(-dz, -dy, -dx), axis=(0, 1, 2)) - f2p
+        denom = eps2 + delIm * delIm
+        wgt = eps4 / (4.0 * denom * denom * denom)
+
+        delIx = np.roll(gx, shift=(-dz, -dy, -dx), axis=(0, 1, 2)) - gx
+        delIy = np.roll(gy, shift=(-dz, -dy, -dx), axis=(0, 1, 2)) - gy
+        delIz = np.roll(gz, shift=(-dz, -dy, -dx), axis=(0, 1, 2)) - gz
+        delIt = np.roll(It, shift=(-dz, -dy, -dx), axis=(0, 1, 2)) - It
+
+        J11 += wgt * delIx * delIx
+        J22 += wgt * delIy * delIy
+        J33 += wgt * delIz * delIz
+        J44 += wgt * delIt * delIt
+        J12 += wgt * delIx * delIy
+        J13 += wgt * delIx * delIz
+        J23 += wgt * delIy * delIz
+        J14 += wgt * delIx * delIt
+        J24 += wgt * delIy * delIt
+        J34 += wgt * delIz * delIt
+
+    for arr in (J11, J22, J33, J44, J12, J13, J23, J14, J24, J34):
+        arr *= invN
+        arr[:, :, 0] = 0
+        arr[:, :, -1] = 0
+        arr[:, 0, :] = 0
+        arr[:, -1, :] = 0
+        arr[0, :, :] = 0
+        arr[-1, :, :] = 0
+
+    return J11, J22, J33, J44, J12, J13, J23, J14, J24, J34
+
+
 def get_motion_tensor_gray(f1, f2, hz, hy, hx):
     f1p = np.pad(f1, ((1, 1), (1, 1), (1, 1)), mode="symmetric")
     f2p = np.pad(f2, ((1, 1), (1, 1), (1, 1)), mode="symmetric")
