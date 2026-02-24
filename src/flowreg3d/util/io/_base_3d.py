@@ -94,6 +94,8 @@ class VideoReader3D(ABC):
         if self.bin_size == 1:
             return frames
 
+        input_dtype = frames.dtype
+
         if frames.ndim != 5:
             raise ValueError(f"Expected 5D array (T, Z, Y, X, C), got {frames.ndim}D")
 
@@ -109,7 +111,7 @@ class VideoReader3D(ABC):
 
         # Reshape and average
         frames = frames.reshape(T // self.bin_size, self.bin_size, Z, Y, X, C)
-        frames = frames.mean(axis=1)
+        frames = frames.mean(axis=1).astype(input_dtype)
 
         return frames
 
@@ -147,7 +149,9 @@ class VideoReader3D(ABC):
 
             # Read and average frames
             raw_frames = self._read_raw_frames(slice(start, end))
-            return raw_frames.mean(axis=0)  # Average over time, return (Z, Y, X, C)
+            return raw_frames.mean(axis=0).astype(
+                raw_frames.dtype
+            )  # Average over time, return (Z, Y, X, C)
 
         # Handle slice
         elif isinstance(key, slice):
@@ -166,7 +170,9 @@ class VideoReader3D(ABC):
                 frame_end = min((bin_idx + 1) * self.bin_size, self.frame_count)
 
                 raw_frames = self._read_raw_frames(slice(frame_start, frame_end))
-                binned_frame = raw_frames.mean(axis=0, keepdims=True)
+                binned_frame = raw_frames.mean(axis=0, keepdims=True).astype(
+                    raw_frames.dtype
+                )
                 binned_frames.append(binned_frame)
 
             return np.concatenate(binned_frames, axis=0)
@@ -190,7 +196,9 @@ class VideoReader3D(ABC):
                 frame_end = min((idx + 1) * self.bin_size, self.frame_count)
 
                 raw_frames = self._read_raw_frames(slice(frame_start, frame_end))
-                binned_frame = raw_frames.mean(axis=0, keepdims=True)
+                binned_frame = raw_frames.mean(axis=0, keepdims=True).astype(
+                    raw_frames.dtype
+                )
                 frames_list.append(binned_frame)
 
             return np.concatenate(frames_list, axis=0)
