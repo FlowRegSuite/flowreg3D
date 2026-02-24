@@ -14,6 +14,7 @@ import flowreg3d.util.image_processing_3D as im3d
 from flowreg3d.motion_correction.OF_options_3D import OutputFormat
 
 # Import to trigger executor registration (side effect)
+import flowreg3d.motion_correction.parallelization  # noqa: F401
 
 
 @dataclass
