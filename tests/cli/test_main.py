@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 import numpy as np
 
-from flowreg3d.cli.main import main
+from flowreg3d.cli.main import main, _get_cli_version
 from flowreg3d.util.io.tiff_3d import TIFFFileWriter3D
 
 
@@ -48,7 +48,7 @@ class TestMainCLI:
                 assert exc_info.value.code == 0
                 output = mock_stdout.getvalue()
                 assert "flowreg3d" in output
-                assert "0.1.0" in output  # Check version number
+                assert _get_cli_version() in output
 
     def test_main_verbose_flag(self):
         """Test verbose flag is recognized."""

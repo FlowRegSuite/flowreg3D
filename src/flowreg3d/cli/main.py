@@ -6,6 +6,20 @@ Provides subcommands for various 3D data processing tasks.
 
 import argparse
 import sys
+from importlib import metadata as importlib_metadata
+
+
+def _get_cli_version() -> str:
+    """Resolve package version for CLI display."""
+    try:
+        return importlib_metadata.version("flowreg3d")
+    except importlib_metadata.PackageNotFoundError:
+        try:
+            from flowreg3d._version import version as scm_version
+
+            return scm_version
+        except Exception:
+            return "0.0.0+unknown"
 
 
 def main():
@@ -30,7 +44,9 @@ Examples:
         """,
     )
 
-    parser.add_argument("--version", action="version", version="%(prog)s 0.1.0")
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {_get_cli_version()}"
+    )
 
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose output"
