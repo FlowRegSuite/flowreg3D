@@ -3,7 +3,10 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from flowreg3d.core.torch.level_solver_3d import level_solver_rbgs3d_torch
+from flowreg3d.core.torch.level_solver_3d import (
+    level_solver_rbgs3d_torch,
+    level_solver_rbgs3d_torch_gnc,
+)
 from flowreg3d.util.torch.resize_util_3D import imresize_fused_gauss_cubic3D
 
 Tensor = torch.Tensor
@@ -233,8 +236,16 @@ def level_solver(
     hx: float,
     hy: float,
     hz: float,
+    gnc_beta=None,
 ):
-    du, dv, dw = level_solver_rbgs3d_torch(
+    solver = level_solver_rbgs3d_torch
+    kwargs = {}
+    if gnc_beta is not None:
+        solver = level_solver_rbgs3d_torch_gnc
+        kwargs["update_lag_semantics"] = "matlab"
+        kwargs["gnc_beta"] = gnc_beta
+
+    du, dv, dw = solver(
         J11,
         J22,
         J33,
@@ -257,8 +268,227 @@ def level_solver(
         hx,
         hy,
         hz,
+        **kwargs,
     )
     return du, dv, dw
+
+
+def normalize_gnc_schedule(gnc_schedule):
+    """Validate and normalize an optional GNC schedule."""
+    if gnc_schedule is None:
+        return None
+
+    schedule = torch.as_tensor(gnc_schedule, dtype=torch.float64)
+    if schedule.ndim != 1:
+        raise ValueError("gnc_schedule must be a 1D sequence of stage weights")
+    if schedule.numel() < 2:
+        raise ValueError("gnc_schedule must contain at least two stages")
+    if torch.any(schedule < 0.0) or torch.any(schedule > 1.0):
+        raise ValueError("gnc_schedule entries must lie in [0, 1]")
+    if not torch.all(torch.diff(schedule) >= 0.0):
+        raise ValueError("gnc_schedule must be monotone nondecreasing")
+    zero = torch.zeros((), dtype=schedule.dtype, device=schedule.device)
+    one = torch.ones((), dtype=schedule.dtype, device=schedule.device)
+    if not torch.isclose(schedule[0], zero):
+        raise ValueError("gnc_schedule must start at 0.0")
+    if not torch.isclose(schedule[-1], one):
+        raise ValueError("gnc_schedule must end at 1.0")
+    return schedule.contiguous()
+
+
+def normalize_warping_steps(warping_steps):
+    """Validate and normalize an optional number of warping steps."""
+    if warping_steps is None:
+        return None
+
+    steps = int(warping_steps)
+    if steps < 1:
+        raise ValueError("warping_steps must be a positive integer")
+    return steps
+
+
+def _solve_displacement_stage_gnc(
+    fixed_: Tensor,
+    moving_: Tensor,
+    alpha: Tuple[float, float, float],
+    update_lag: int,
+    iterations: int,
+    min_level: int,
+    levels: int,
+    eta: float,
+    a_smooth: float,
+    a_data_vec: Tensor,
+    uvw: Optional[Tensor],
+    weight_: Tensor,
+    gnc_beta: float,
+    warping_steps: int,
+) -> Tensor:
+    """Solve one torch GNC stage with repeated warp/relinearize steps."""
+    p, m, n, _ = fixed_.shape
+    if uvw is not None:
+        u_init = uvw[..., 0].to(torch.float64)
+        v_init = uvw[..., 1].to(torch.float64)
+        w_init = uvw[..., 2].to(torch.float64)
+    else:
+        u_init = torch.zeros((p, m, n), dtype=torch.float64, device=fixed_.device)
+        v_init = torch.zeros_like(u_init)
+        w_init = torch.zeros_like(u_init)
+
+    max_level_z = warpingDepth(eta, levels, p, m, n)
+    max_level_y = warpingDepth(eta, levels, m, n, p)
+    max_level_x = warpingDepth(eta, levels, n, p, m)
+    max_level = min(max_level_x, max_level_y, max_level_z) * 4
+    max_level_z = min(max_level_z, max_level)
+    max_level_y = min(max_level_y, max_level)
+    max_level_x = min(max_level_x, max_level)
+    if max(max_level_x, max_level_y, max_level_z) <= min_level:
+        min_level = max(max_level_x, max_level_y, max_level_z) - 1
+    if min_level < 0:
+        min_level = 0
+
+    u = v = w = None
+    top = max(max_level_x, max_level_y, max_level_z)
+    for i in range(top, min_level - 1, -1):
+        lvl_D = int(round(p * (eta ** min(i, max_level_z))))
+        lvl_H = int(round(m * (eta ** min(i, max_level_y))))
+        lvl_W = int(round(n * (eta ** min(i, max_level_x))))
+        level_size = (lvl_D, lvl_H, lvl_W)
+
+        f1_level = resize(fixed_, level_size)
+        f2_level = resize(moving_, level_size)
+        if f1_level.ndim == 3:
+            f1_level = f1_level.unsqueeze(-1)
+            f2_level = f2_level.unsqueeze(-1)
+
+        cur_hz = float(p) / f1_level.shape[0]
+        cur_hy = float(m) / f1_level.shape[1]
+        cur_hx = float(n) / f1_level.shape[2]
+
+        if i == top:
+            u = add_boundary(resize(u_init, level_size))
+            v = add_boundary(resize(v_init, level_size))
+            w = add_boundary(resize(w_init, level_size))
+        else:
+            u = add_boundary(resize(u[1:-1, 1:-1, 1:-1], level_size))
+            v = add_boundary(resize(v[1:-1, 1:-1, 1:-1], level_size))
+            w = add_boundary(resize(w[1:-1, 1:-1, 1:-1], level_size))
+
+        u = u.contiguous()
+        v = v.contiguous()
+        w = w.contiguous()
+
+        weight_level = resize(weight_, f1_level.shape[:3])
+        if weight_level.ndim < 4:
+            weight_level = weight_level.unsqueeze(-1)
+        weight_level = _pad_spatial_const_4d_lastdim(
+            weight_level, (1, 1, 1, 1, 1, 1), value=0.0
+        ).contiguous()
+
+        alpha_scaling = 1.0 if i == min_level else (eta ** (-0.5 * i))
+        alpha_i = (
+            alpha_scaling * alpha[0],
+            alpha_scaling * alpha[1],
+            alpha_scaling * alpha[2],
+        )
+
+        for _ in range(warping_steps):
+            tmp = imregister_wrapper(
+                f2_level,
+                u[1:-1, 1:-1, 1:-1] / cur_hx,
+                v[1:-1, 1:-1, 1:-1] / cur_hy,
+                w[1:-1, 1:-1, 1:-1] / cur_hz,
+                f1_level,
+                interpolation_method="bilinear",
+            )
+            if tmp.ndim == 3:
+                tmp = tmp.unsqueeze(-1)
+
+            J_shape = (
+                f1_level.shape[0] + 2,
+                f1_level.shape[1] + 2,
+                f1_level.shape[2] + 2,
+                f1_level.shape[3],
+            )
+            J11 = torch.zeros(J_shape, dtype=torch.float64, device=fixed_.device)
+            J22 = torch.zeros_like(J11)
+            J33 = torch.zeros_like(J11)
+            J44 = torch.zeros_like(J11)
+            J12 = torch.zeros_like(J11)
+            J13 = torch.zeros_like(J11)
+            J23 = torch.zeros_like(J11)
+            J14 = torch.zeros_like(J11)
+            J24 = torch.zeros_like(J11)
+            J34 = torch.zeros_like(J11)
+
+            for ch in range(f1_level.shape[3]):
+                Jc = get_motion_tensor_gc(
+                    f1_level[:, :, :, ch], tmp[:, :, :, ch], cur_hz, cur_hy, cur_hx
+                )
+                J11[:, :, :, ch] = Jc[0]
+                J22[:, :, :, ch] = Jc[1]
+                J33[:, :, :, ch] = Jc[2]
+                J44[:, :, :, ch] = Jc[3]
+                J12[:, :, :, ch] = Jc[4]
+                J13[:, :, :, ch] = Jc[5]
+                J23[:, :, :, ch] = Jc[6]
+                J14[:, :, :, ch] = Jc[7]
+                J24[:, :, :, ch] = Jc[8]
+                J34[:, :, :, ch] = Jc[9]
+
+            du, dv, dw = level_solver(
+                J11.contiguous(),
+                J22.contiguous(),
+                J33.contiguous(),
+                J44.contiguous(),
+                J12.contiguous(),
+                J13.contiguous(),
+                J23.contiguous(),
+                J14.contiguous(),
+                J24.contiguous(),
+                J34.contiguous(),
+                weight_level,
+                u,
+                v,
+                w,
+                alpha_i,
+                iterations,
+                update_lag,
+                None,
+                a_data_vec,
+                a_smooth,
+                cur_hx,
+                cur_hy,
+                cur_hz,
+                gnc_beta=gnc_beta,
+            )
+
+            u = u + du
+            v = v + dv
+            w = w + dw
+            if min(level_size) > 5:
+                core = (slice(1, -1), slice(1, -1), slice(1, -1))
+                u = add_boundary(_median3d(u[core], 5))
+                v = add_boundary(_median3d(v[core], 5))
+                w = add_boundary(_median3d(w[core], 5))
+
+    flow = torch.zeros(
+        (u.shape[0] - 2, u.shape[1] - 2, u.shape[2] - 2, 3),
+        dtype=torch.float64,
+        device=fixed_.device,
+    )
+    flow[..., 0] = u[1:-1, 1:-1, 1:-1]
+    flow[..., 1] = v[1:-1, 1:-1, 1:-1]
+    flow[..., 2] = w[1:-1, 1:-1, 1:-1]
+
+    if min_level > 0:
+        flow_resized = torch.zeros(
+            (p, m, n, 3), dtype=torch.float64, device=fixed_.device
+        )
+        flow_resized[..., 0] = resize(flow[..., 0], (p, m, n))
+        flow_resized[..., 1] = resize(flow[..., 1], (p, m, n))
+        flow_resized[..., 2] = resize(flow[..., 2], (p, m, n))
+        flow = flow_resized
+    return flow
 
 
 def get_displacement(
@@ -275,8 +505,12 @@ def get_displacement(
     const_assumption: str = "gc",
     uvw: Optional[Tensor] = None,
     weight: Optional[Union[float, Tensor]] = None,
+    gnc_schedule=None,
+    warping_steps=None,
 ) -> Tensor:
     assert const_assumption == "gc"
+    gnc_schedule_arr = normalize_gnc_schedule(gnc_schedule)
+    warping_steps = normalize_warping_steps(warping_steps)
     # dtype parity with NumPy path
     fixed = fixed.to(torch.float64)
     moving = moving.to(torch.float64)
@@ -315,6 +549,27 @@ def get_displacement(
         if isinstance(a_data, (float, int))
         else torch.as_tensor(a_data, dtype=torch.float64, device=fixed.device)
     )
+    if gnc_schedule_arr is not None:
+        effective_warping_steps = 10 if warping_steps is None else warping_steps
+        flow = uvw
+        for gnc_beta in gnc_schedule_arr:
+            flow = _solve_displacement_stage_gnc(
+                fixed_,
+                moving_,
+                alpha,
+                update_lag,
+                iterations,
+                min_level,
+                levels,
+                eta,
+                a_smooth,
+                a_data_vec,
+                flow,
+                weight_,
+                float(gnc_beta),
+                effective_warping_steps,
+            )
+        return flow
 
     f1_low = fixed_
     f2_low = moving_

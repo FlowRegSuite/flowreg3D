@@ -284,6 +284,8 @@ class TestParameterFlow3D:
             update_lag=8,
             a_data=0.5,
             a_smooth=1.2,
+            gnc_schedule=(0.0, 0.5, 1.0),
+            warping_steps=10,
             constancy_assumption=ConstancyAssumption.GRADIENT,
         )
 
@@ -299,7 +301,41 @@ class TestParameterFlow3D:
         assert params["update_lag"] == 8
         assert params["a_data"] == 0.5
         assert params["a_smooth"] == 1.2
+        assert params["gnc_schedule"] == (0.0, 0.5, 1.0)
+        assert params["warping_steps"] == 10
         assert params["const_assumption"] == "gc"
+
+    def test_gnc_schedule_normalized_to_tuple(self):
+        """Test valid GNC schedules are normalized to tuples."""
+        options = OFOptions(gnc_schedule=[0.0, 0.5, 1.0])
+
+        assert options.gnc_schedule == (0.0, 0.5, 1.0)
+
+    @pytest.mark.parametrize(
+        "schedule,match",
+        [
+            ([0.5, 1.0], "must start at 0.0"),
+            ([0.0, 0.5], "must end at 1.0"),
+            ([0.0], "at least two stages"),
+            ([0.0, 0.75, 0.5, 1.0], "monotone nondecreasing"),
+            ([-0.1, 1.0], "must lie in \\[0, 1\\]"),
+        ],
+    )
+    def test_gnc_schedule_invalid(self, schedule, match):
+        """Test invalid GNC schedules raise validation errors."""
+        with pytest.raises(ValueError, match=match):
+            OFOptions(gnc_schedule=schedule)
+
+    def test_warping_steps_positive_integer(self):
+        """Test valid warping_steps values are preserved."""
+        options = OFOptions(warping_steps=10)
+
+        assert options.warping_steps == 10
+
+    def test_warping_steps_invalid(self):
+        """Test invalid warping_steps values raise validation errors."""
+        with pytest.raises(ValueError, match="greater than or equal to 1"):
+            OFOptions(warping_steps=0)
 
     def test_effective_min_level_quality_mapping(self):
         """Test effective_min_level mapping for different quality settings."""

@@ -199,12 +199,11 @@ class TestFlowComputation3D:
 
     def test_3d_flow_parameters_extraction(self, fast_3d_of_options):
         """Test extraction of 3D flow parameters."""
-        pytest.skip(
-            "Mock not triggered; pipeline no longer calls flowreg3d.core.optical_flow_3d.get_displacement."
-        )
         fast_3d_of_options.alpha = (1.0, 2.0, 3.0)
         fast_3d_of_options.levels = 25
         fast_3d_of_options.iterations = 15
+        fast_3d_of_options.gnc_schedule = (0.0, 0.5, 1.0)
+        fast_3d_of_options.warping_steps = 10
 
         pipeline = BatchMotionCorrector(fast_3d_of_options)
         pipeline.weight = np.ones((4, 16, 16, 2))
@@ -216,23 +215,21 @@ class TestFlowComputation3D:
 
         # Mock displacement function
         expected_flow = np.random.rand(Z, Y, X, 3).astype(np.float32)
+        pipeline._get_disp = MagicMock(return_value=expected_flow)
 
-        with patch("flowreg3d.core.optical_flow_3d.get_displacement") as mock_get_disp:
-            mock_get_disp.return_value = expected_flow
+        result = pipeline._compute_flow_single(frame_proc, ref_proc)
 
-            result = pipeline._compute_flow_single(frame_proc, ref_proc)
+        pipeline._get_disp.assert_called_once()
+        call_args = pipeline._get_disp.call_args
 
-            # Should call get_displacement with correct parameters
-            mock_get_disp.assert_called_once()
-            call_args = mock_get_disp.call_args
+        flow_params = call_args[1]
+        assert flow_params["alpha"] == (1.0, 2.0, 3.0)
+        assert flow_params["levels"] == 25
+        assert flow_params["iterations"] == 15
+        assert flow_params["gnc_schedule"] == (0.0, 0.5, 1.0)
+        assert flow_params["warping_steps"] == 10
 
-            # Check flow parameters
-            flow_params = call_args[1]
-            assert flow_params["alpha"] == (1.0, 2.0, 3.0)
-            assert flow_params["levels"] == 25
-            assert flow_params["iterations"] == 15
-
-            assert result is expected_flow
+        assert result is expected_flow
 
     def test_3d_batch_processing_parallel(self, fast_3d_of_options):
         """Test 3D batch processing with parallel executor."""

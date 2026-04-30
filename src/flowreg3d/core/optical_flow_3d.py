@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.ndimage import median_filter, map_coordinates
 
-from flowreg3d.core.level_solver_3d import compute_flow_3d
+from flowreg3d.core.level_solver_3d import compute_flow_3d, compute_flow_3d_gnc
 from flowreg3d.util.resize_util_3D import imresize_fused_gauss_cubic3D
 
 
@@ -283,8 +283,13 @@ def level_solver(
     hx,
     hy,
     hz,
+    gnc_beta=None,
 ):
-    result = compute_flow_3d(
+    solver = compute_flow_3d if gnc_beta is None else compute_flow_3d_gnc
+    kwargs = {}
+    if gnc_beta is not None:
+        kwargs["gnc_beta"] = gnc_beta
+    result = solver(
         J11,
         J22,
         J33,
@@ -309,11 +314,230 @@ def level_solver(
         hx=hx,
         hy=hy,
         hz=hz,
+        **kwargs,
     )
     du = result[:, :, :, 0]
     dv = result[:, :, :, 1]
     dw = result[:, :, :, 2]
     return du, dv, dw
+
+
+def normalize_gnc_schedule(gnc_schedule):
+    """Validate and normalize an optional GNC schedule."""
+    if gnc_schedule is None:
+        return None
+
+    schedule = np.asarray(gnc_schedule, dtype=np.float64)
+    if schedule.ndim != 1:
+        raise ValueError("gnc_schedule must be a 1D sequence of stage weights")
+    if schedule.size < 2:
+        raise ValueError("gnc_schedule must contain at least two stages")
+    if np.any(schedule < 0.0) or np.any(schedule > 1.0):
+        raise ValueError("gnc_schedule entries must lie in [0, 1]")
+    if not np.all(np.diff(schedule) >= 0.0):
+        raise ValueError("gnc_schedule must be monotone nondecreasing")
+    if not np.isclose(schedule[0], 0.0):
+        raise ValueError("gnc_schedule must start at 0.0")
+    if not np.isclose(schedule[-1], 1.0):
+        raise ValueError("gnc_schedule must end at 1.0")
+    return np.ascontiguousarray(schedule)
+
+
+def normalize_warping_steps(warping_steps):
+    """Validate and normalize an optional number of warping steps."""
+    if warping_steps is None:
+        return None
+
+    steps = int(warping_steps)
+    if steps < 1:
+        raise ValueError("warping_steps must be a positive integer")
+    return steps
+
+
+def _solve_displacement_stage_gnc(
+    fixed,
+    moving,
+    alpha,
+    update_lag,
+    iterations,
+    min_level,
+    levels,
+    eta,
+    a_smooth,
+    a_data_arr,
+    uvw,
+    weight,
+    gnc_beta,
+    warping_steps,
+):
+    """Solve one 3D GNC stage with repeated warp/relinearize steps."""
+    p, m, n, n_channels = fixed.shape
+    f1_low = fixed
+    f2_low = moving
+    max_level_z = warpingDepth(eta, levels, p, m, n)
+    max_level_y = warpingDepth(eta, levels, m, n, p)
+    max_level_x = warpingDepth(eta, levels, n, p, m)
+    max_level = min(max_level_x, max_level_y, max_level_z) * 4
+    max_level_z = min(max_level_z, max_level)
+    max_level_y = min(max_level_y, max_level)
+    max_level_x = min(max_level_x, max_level)
+    if max(max_level_x, max_level_y, max_level_z) <= min_level:
+        min_level = max(max_level_x, max_level_y, max_level_z) - 1
+    if min_level < 0:
+        min_level = 0
+    if uvw is not None:
+        u_init = uvw[:, :, :, 0]
+        v_init = uvw[:, :, :, 1]
+        w_init = uvw[:, :, :, 2]
+    else:
+        u_init = np.zeros((p, m, n), dtype=np.float64)
+        v_init = np.zeros((p, m, n), dtype=np.float64)
+        w_init = np.zeros((p, m, n), dtype=np.float64)
+
+    u = v = w = None
+    for i in range(max(max_level_x, max_level_y, max_level_z), min_level - 1, -1):
+        level_size = (
+            int(round(p * eta ** (min(i, max_level_z)))),
+            int(round(m * eta ** (min(i, max_level_y)))),
+            int(round(n * eta ** (min(i, max_level_x)))),
+        )
+        f1_level = resize(f1_low, level_size)
+        f2_level = resize(f2_low, level_size)
+        if f1_level.ndim == 3:
+            f1_level = f1_level[:, :, :, np.newaxis]
+            f2_level = f2_level[:, :, :, np.newaxis]
+        current_hz = float(p) / f1_level.shape[0]
+        current_hy = float(m) / f1_level.shape[1]
+        current_hx = float(n) / f1_level.shape[2]
+        if i == max(max_level_x, max_level_y, max_level_z):
+            u = add_boundary(resize(u_init, level_size))
+            v = add_boundary(resize(v_init, level_size))
+            w = add_boundary(resize(w_init, level_size))
+        else:
+            u = add_boundary(resize(u[1:-1, 1:-1, 1:-1], level_size))
+            v = add_boundary(resize(v[1:-1, 1:-1, 1:-1], level_size))
+            w = add_boundary(resize(w[1:-1, 1:-1, 1:-1], level_size))
+        u = np.ascontiguousarray(u)
+        v = np.ascontiguousarray(v)
+        w = np.ascontiguousarray(w)
+
+        weight_level = resize(weight, f1_level.shape[:3])
+        weight_level = np.pad(
+            weight_level,
+            ((1, 1), (1, 1), (1, 1), (0, 0)),
+            mode="constant",
+            constant_values=0.0,
+        )
+        if weight_level.ndim < 4:
+            weight_level = weight_level[:, :, :, np.newaxis]
+        weight_level = np.ascontiguousarray(weight_level)
+
+        if i == min_level:
+            alpha_scaling = 1
+        else:
+            alpha_scaling = eta ** (-0.5 * i)
+        alpha_tmp = [alpha_scaling * alpha[j] for j in range(len(alpha))]
+
+        for _ in range(warping_steps):
+            tmp = imregister_wrapper(
+                f2_level,
+                u[1:-1, 1:-1, 1:-1] / current_hx,
+                v[1:-1, 1:-1, 1:-1] / current_hy,
+                w[1:-1, 1:-1, 1:-1] / current_hz,
+                f1_level,
+            )
+            if tmp.ndim == 3:
+                tmp = tmp[:, :, :, np.newaxis]
+
+            J_size = (
+                f1_level.shape[0] + 2,
+                f1_level.shape[1] + 2,
+                f1_level.shape[2] + 2,
+                n_channels,
+            )
+            J11 = np.zeros(J_size, dtype=np.float64)
+            J22 = np.zeros(J_size, dtype=np.float64)
+            J33 = np.zeros(J_size, dtype=np.float64)
+            J44 = np.zeros(J_size, dtype=np.float64)
+            J12 = np.zeros(J_size, dtype=np.float64)
+            J13 = np.zeros(J_size, dtype=np.float64)
+            J23 = np.zeros(J_size, dtype=np.float64)
+            J14 = np.zeros(J_size, dtype=np.float64)
+            J24 = np.zeros(J_size, dtype=np.float64)
+            J34 = np.zeros(J_size, dtype=np.float64)
+            for ch in range(n_channels):
+                J_ch = get_motion_tensor_gc(
+                    f1_level[:, :, :, ch],
+                    tmp[:, :, :, ch],
+                    current_hz,
+                    current_hy,
+                    current_hx,
+                )
+                J11[:, :, :, ch] = J_ch[0]
+                J22[:, :, :, ch] = J_ch[1]
+                J33[:, :, :, ch] = J_ch[2]
+                J44[:, :, :, ch] = J_ch[3]
+                J12[:, :, :, ch] = J_ch[4]
+                J13[:, :, :, ch] = J_ch[5]
+                J23[:, :, :, ch] = J_ch[6]
+                J14[:, :, :, ch] = J_ch[7]
+                J24[:, :, :, ch] = J_ch[8]
+                J34[:, :, :, ch] = J_ch[9]
+
+            du, dv, dw = level_solver(
+                np.ascontiguousarray(J11),
+                np.ascontiguousarray(J22),
+                np.ascontiguousarray(J33),
+                np.ascontiguousarray(J44),
+                np.ascontiguousarray(J12),
+                np.ascontiguousarray(J13),
+                np.ascontiguousarray(J23),
+                np.ascontiguousarray(J14),
+                np.ascontiguousarray(J24),
+                np.ascontiguousarray(J34),
+                weight_level,
+                u,
+                v,
+                w,
+                alpha_tmp,
+                iterations,
+                update_lag,
+                0,
+                a_data_arr,
+                a_smooth,
+                current_hx,
+                current_hy,
+                current_hz,
+                gnc_beta,
+            )
+            u = u + du
+            v = v + dv
+            w = w + dw
+            if min(level_size) > 5:
+                u = add_boundary(
+                    median_filter(u[1:-1, 1:-1, 1:-1], size=(5, 5, 5), mode="mirror")
+                )
+                v = add_boundary(
+                    median_filter(v[1:-1, 1:-1, 1:-1], size=(5, 5, 5), mode="mirror")
+                )
+                w = add_boundary(
+                    median_filter(w[1:-1, 1:-1, 1:-1], size=(5, 5, 5), mode="mirror")
+                )
+
+    flow = np.zeros(
+        (u.shape[0] - 2, u.shape[1] - 2, u.shape[2] - 2, 3),
+        dtype=np.float64,
+    )
+    flow[..., 0] = u[1:-1, 1:-1, 1:-1]
+    flow[..., 1] = v[1:-1, 1:-1, 1:-1]
+    flow[..., 2] = w[1:-1, 1:-1, 1:-1]
+    if min_level > 0:
+        flow_resized = np.zeros((p, m, n, 3), dtype=np.float64)
+        flow_resized[..., 0] = resize(flow[..., 0], (p, m, n))
+        flow_resized[..., 1] = resize(flow[..., 1], (p, m, n))
+        flow_resized[..., 2] = resize(flow[..., 2], (p, m, n))
+        flow = flow_resized
+    return flow
 
 
 def get_displacement(
@@ -330,7 +554,11 @@ def get_displacement(
     const_assumption="gc",
     uvw=None,
     weight=None,
+    gnc_schedule=None,
+    warping_steps=None,
 ):
+    gnc_schedule_arr = normalize_gnc_schedule(gnc_schedule)
+    warping_steps = normalize_warping_steps(warping_steps)
     fixed = fixed.astype(np.float64)
     moving = moving.astype(np.float64)
     if fixed.ndim == 4:
@@ -384,6 +612,27 @@ def get_displacement(
     else:
         a_data_arr = a_data
     a_data_arr = np.ascontiguousarray(a_data_arr)
+    if gnc_schedule_arr is not None:
+        effective_warping_steps = 10 if warping_steps is None else warping_steps
+        flow = uvw
+        for gnc_beta in gnc_schedule_arr:
+            flow = _solve_displacement_stage_gnc(
+                fixed,
+                moving,
+                alpha,
+                update_lag,
+                iterations,
+                min_level,
+                levels,
+                eta,
+                a_smooth,
+                a_data_arr,
+                flow,
+                weight,
+                float(gnc_beta),
+                effective_warping_steps,
+            )
+        return flow
     f1_low = fixed
     f2_low = moving
     max_level_z = warpingDepth(eta, levels, p, m, n)
