@@ -84,3 +84,4 @@ _skbuild
 *.egg-info
 CLAUDE.md
 AGENTS.md
+/src/flowreg3d/_version.py
