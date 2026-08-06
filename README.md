@@ -12,7 +12,7 @@ This project is still in an **alpha stage**. Expect rapid changes, incomplete fe
 - The API may evolve as we stabilize core functionality.
 - Documentation and examples are incomplete.
 - Feedback and bug reports are especially valuable at this stage.
-- GPU implementation currently produces numerical differences compared to the CPU version and might require different parameter settings.
+- The Torch GPU solver now uses the CPU component order (`u` → `v` → `w`, where `w` is the z component) and CPU-compatible 3-D cubic (tricubic) interpolation. On the canonical benchmark this improves GPU EPE to 0.575085 versus 0.573684 on CPU. Results are not bit-exact because red-black spatial ordering, pyramid resizing, and median-filter boundaries still differ; on that benchmark, this corrected GPU path is also slower than the previous stock GPU solver.
 
 # <img src="https://raw.githubusercontent.com/flowregsuite/flowreg3D/3df1fddabd74b1f33e3361a8abcb12239eef7f6b/img/flowreglogo.png" alt="FlowReg logo" height="64"> flowreg3D
 
@@ -31,7 +31,7 @@ Alignment of two 2P imaging stacks with difficult, synthetic non-rigid motion pa
 ## Features
 
 - **3D Variational Optical Flow**: Directly estimates dense 3D motion fields between volumetric frames, capturing complex non-rigid deformations with subpixel accuracy.
-- **GPU Acceleration**: Optional torch backend with fully GPU-optimized solver for fast processing of large 3D frames.
+- **GPU Acceleration**: Optional torch backend with a GPU-optimized solver and CPU-compatible 3-D cubic (tricubic) interpolation for large volumetric frames.
 - **Parallelized Processing**: Efficiently handles long sequences of volumetric data.
 
 ## Requirements
@@ -54,7 +54,7 @@ conda activate flowreg3d
 pip install flowreg3d
 ```
 
-To install the project with GPU support, you can install it with the ```gpu``` extra:
+Install the Torch GPU backend, including its 3-D cubic (tricubic) interpolation support, with the `gpu` extra:
 
 ```bash
 pip install flowreg3d[gpu]

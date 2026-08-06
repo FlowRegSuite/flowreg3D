@@ -92,16 +92,39 @@ def level_solver_rbgs3d_torch(
         ii = torch.arange(1, N - 1, device=u.device).view(1, 1, -1)
         Rmask = (kk + jj + ii) % 2 == 0
         Bmask = ~Rmask
-
-        num_u = torch.empty_like(u)
-        num_v = torch.empty_like(v)
-        num_w = torch.empty_like(w)
-        den_u = torch.empty_like(u)
-        den_v = torch.empty_like(v)
-        den_w = torch.empty_like(w)
+        core = (cK, cJ, cI)
 
         if update_lag < 1:
             update_lag = 1
+
+        def refresh_boundaries():
+            _set_boundary3d_(du)
+            _set_boundary3d_(dv)
+            _set_boundary3d_(dw)
+
+        def smooth_numerator(field, increment):
+            center = field[core]
+            return (
+                wXm * (field[cK, cJ, 0 : N - 2] + increment[cK, cJ, 0 : N - 2] - center)
+                + wXp * (field[cK, cJ, 2:N] + increment[cK, cJ, 2:N] - center)
+                + wYm
+                * (field[cK, 0 : M - 2, cI] + increment[cK, 0 : M - 2, cI] - center)
+                + wYp * (field[cK, 2:M, cI] + increment[cK, 2:M, cI] - center)
+                + wZm
+                * (field[0 : P - 2, cJ, cI] + increment[0 : P - 2, cJ, cI] - center)
+                + wZp * (field[2:P, cJ, cI] + increment[2:P, cJ, cI] - center)
+            )
+
+        def sor_update(field, increment, data_numerator, denominator, mask):
+            old = increment[core]
+            numerator = data_numerator[core] + smooth_numerator(field, increment)
+            target = torch.where(
+                denominator != 0,
+                numerator / denominator,
+                torch.zeros_like(denominator),
+            )
+            proposed = (1 - omega) * old + omega * target
+            increment[core] = torch.where(mask, proposed, old)
 
         for it in range(iterations):
             upd_tick = (it % update_lag) == 0
@@ -159,9 +182,7 @@ def level_solver_rbgs3d_torch(
                 denom_v_data = (S * J22).sum(3)
                 denom_w_data = (S * J33).sum(3)
 
-            _set_boundary3d_(du)
-            _set_boundary3d_(dv)
-            _set_boundary3d_(dw)
+            refresh_boundaries()
 
             if a_smooth != 1:
                 psiC = psi_smooth[cK, cJ, cI]
@@ -180,162 +201,27 @@ def level_solver_rbgs3d_torch(
                 wZm = az.expand(shape)
                 wZp = az.expand(shape)
 
-            du3h = du.unsqueeze(-1)
-            dv3h = dv.unsqueeze(-1)
-            dw3h = dw.unsqueeze(-1)
+            smooth_denominator = wXm + wXp + wYm + wYp + wZm + wZp
+            den_u = denom_u_data[core] + smooth_denominator
+            den_v = denom_v_data[core] + smooth_denominator
+            den_w = denom_w_data[core] + smooth_denominator
 
-            nu_data = -(S * (J14 + J12 * dv3h + J13 * dw3h)).sum(3)
-            nv_data = -(S * (J24 + J12 * du3h + J23 * dw3h)).sum(3)
-            nw_data = -(S * (J34 + J13 * du3h + J23 * dv3h)).sum(3)
+            for color_mask in (Rmask, Bmask):
+                nu_data = -(
+                    S * (J14 + J12 * dv.unsqueeze(-1) + J13 * dw.unsqueeze(-1))
+                ).sum(3)
+                sor_update(u, du, nu_data, den_u, color_mask)
 
-            num_u[cK, cJ, cI] = (
-                nu_data[cK, cJ, cI]
-                + wXm * (u[cK, cJ, 0 : N - 2] + du[cK, cJ, 0 : N - 2] - u[cK, cJ, cI])
-                + wXp * (u[cK, cJ, 2:N] + du[cK, cJ, 2:N] - u[cK, cJ, cI])
-                + wYm * (u[cK, 0 : M - 2, cI] + du[cK, 0 : M - 2, cI] - u[cK, cJ, cI])
-                + wYp * (u[cK, 2:M, cI] + du[cK, 2:M, cI] - u[cK, cJ, cI])
-                + wZm * (u[0 : P - 2, cJ, cI] + du[0 : P - 2, cJ, cI] - u[cK, cJ, cI])
-                + wZp * (u[2:P, cJ, cI] + du[2:P, cJ, cI] - u[cK, cJ, cI])
-            )
-            den_u[cK, cJ, cI] = denom_u_data[cK, cJ, cI] + (
-                wXm + wXp + wYm + wYp + wZm + wZp
-            )
+                nv_data = -(
+                    S * (J24 + J12 * du.unsqueeze(-1) + J23 * dw.unsqueeze(-1))
+                ).sum(3)
+                sor_update(v, dv, nv_data, den_v, color_mask)
 
-            num_v[cK, cJ, cI] = (
-                nv_data[cK, cJ, cI]
-                + wXm * (v[cK, cJ, 0 : N - 2] + dv[cK, cJ, 0 : N - 2] - v[cK, cJ, cI])
-                + wXp * (v[cK, cJ, 2:N] + dv[cK, cJ, 2:N] - v[cK, cJ, cI])
-                + wYm * (v[cK, 0 : M - 2, cI] + dv[cK, 0 : M - 2, cI] - v[cK, cJ, cI])
-                + wYp * (v[cK, 2:M, cI] + dv[cK, 2:M, cI] - v[cK, cJ, cI])
-                + wZm * (v[0 : P - 2, cJ, cI] + dv[0 : P - 2, cJ, cI] - v[cK, cJ, cI])
-                + wZp * (v[2:P, cJ, cI] + dv[2:P, cJ, cI] - v[cK, cJ, cI])
-            )
-            den_v[cK, cJ, cI] = denom_v_data[cK, cJ, cI] + (
-                wXm + wXp + wYm + wYp + wZm + wZp
-            )
+                nw_data = -(
+                    S * (J34 + J13 * du.unsqueeze(-1) + J23 * dv.unsqueeze(-1))
+                ).sum(3)
+                sor_update(w, dw, nw_data, den_w, color_mask)
 
-            num_w[cK, cJ, cI] = (
-                nw_data[cK, cJ, cI]
-                + wXm * (w[cK, cJ, 0 : N - 2] + dw[cK, cJ, 0 : N - 2] - w[cK, cJ, cI])
-                + wXp * (w[cK, cJ, 2:N] + dw[cK, cJ, 2:N] - w[cK, cJ, cI])
-                + wYm * (w[cK, 0 : M - 2, cI] + dw[cK, 0 : M - 2, cI] - w[cK, cJ, cI])
-                + wYp * (w[cK, 2:M, cI] + dw[cK, 2:M, cI] - w[cK, cJ, cI])
-                + wZm * (w[0 : P - 2, cJ, cI] + dw[0 : P - 2, cJ, cI] - w[cK, cJ, cI])
-                + wZp * (w[2:P, cJ, cI] + dw[2:P, cJ, cI] - w[cK, cJ, cI])
-            )
-            den_w[cK, cJ, cI] = denom_w_data[cK, cJ, cI] + (
-                wXm + wXp + wYm + wYp + wZm + wZp
-            )
-
-            du_int = du[cK, cJ, cI]
-            dv_int = dv[cK, cJ, cI]
-            dw_int = dw[cK, cJ, cI]
-            den_u_loc = den_u[cK, cJ, cI]
-            den_v_loc = den_v[cK, cJ, cI]
-            den_w_loc = den_w[cK, cJ, cI]
-            frac_u = torch.where(
-                den_u_loc != 0,
-                num_u[cK, cJ, cI] / den_u_loc,
-                torch.zeros_like(den_u_loc),
-            )
-            frac_v = torch.where(
-                den_v_loc != 0,
-                num_v[cK, cJ, cI] / den_v_loc,
-                torch.zeros_like(den_v_loc),
-            )
-            frac_w = torch.where(
-                den_w_loc != 0,
-                num_w[cK, cJ, cI] / den_w_loc,
-                torch.zeros_like(den_w_loc),
-            )
-            new_u = (1 - omega) * du_int + omega * frac_u
-            new_v = (1 - omega) * dv_int + omega * frac_v
-            new_w = (1 - omega) * dw_int + omega * frac_w
-            du[cK, cJ, cI] = torch.where(Rmask, new_u, du_int)
-            dv[cK, cJ, cI] = torch.where(Rmask, new_v, dv_int)
-            dw[cK, cJ, cI] = torch.where(Rmask, new_w, dw_int)
-
-            _set_boundary3d_(du)
-            _set_boundary3d_(dv)
-            _set_boundary3d_(dw)
-
-            # Black pass (S remains valid; dv/du/dw changed, so recompute linear terms)
-            du3h = du.unsqueeze(-1)
-            dv3h = dv.unsqueeze(-1)
-            dw3h = dw.unsqueeze(-1)
-            nu_data = -(S * (J14 + J12 * dv3h + J13 * dw3h)).sum(3)
-            nv_data = -(S * (J24 + J12 * du3h + J23 * dw3h)).sum(3)
-            nw_data = -(S * (J34 + J13 * du3h + J23 * dv3h)).sum(3)
-
-            num_u[cK, cJ, cI] = (
-                nu_data[cK, cJ, cI]
-                + wXm * (u[cK, cJ, 0 : N - 2] + du[cK, cJ, 0 : N - 2] - u[cK, cJ, cI])
-                + wXp * (u[cK, cJ, 2:N] + du[cK, cJ, 2:N] - u[cK, cJ, cI])
-                + wYm * (u[cK, 0 : M - 2, cI] + du[cK, 0 : M - 2, cI] - u[cK, cJ, cI])
-                + wYp * (u[cK, 2:M, cI] + du[cK, 2:M, cI] - u[cK, cJ, cI])
-                + wZm * (u[0 : P - 2, cJ, cI] + du[0 : P - 2, cJ, cI] - u[cK, cJ, cI])
-                + wZp * (u[2:P, cJ, cI] + du[2:P, cJ, cI] - u[cK, cJ, cI])
-            )
-            den_u[cK, cJ, cI] = denom_u_data[cK, cJ, cI] + (
-                wXm + wXp + wYm + wYp + wZm + wZp
-            )
-
-            num_v[cK, cJ, cI] = (
-                nv_data[cK, cJ, cI]
-                + wXm * (v[cK, cJ, 0 : N - 2] + dv[cK, cJ, 0 : N - 2] - v[cK, cJ, cI])
-                + wXp * (v[cK, cJ, 2:N] + dv[cK, cJ, 2:N] - v[cK, cJ, cI])
-                + wYm * (v[cK, 0 : M - 2, cI] + dv[cK, 0 : M - 2, cI] - v[cK, cJ, cI])
-                + wYp * (v[cK, 2:M, cI] + dv[cK, 2:M, cI] - v[cK, cJ, cI])
-                + wZm * (v[0 : P - 2, cJ, cI] + dv[0 : P - 2, cJ, cI] - v[cK, cJ, cI])
-                + wZp * (v[2:P, cJ, cI] + dv[2:P, cJ, cI] - v[cK, cJ, cI])
-            )
-            den_v[cK, cJ, cI] = denom_v_data[cK, cJ, cI] + (
-                wXm + wXp + wYm + wYp + wZm + wZp
-            )
-
-            num_w[cK, cJ, cI] = (
-                nw_data[cK, cJ, cI]
-                + wXm * (w[cK, cJ, 0 : N - 2] + dw[cK, cJ, 0 : N - 2] - w[cK, cJ, cI])
-                + wXp * (w[cK, cJ, 2:N] + dw[cK, cJ, 2:N] - w[cK, cJ, cI])
-                + wYm * (w[cK, 0 : M - 2, cI] + dw[cK, 0 : M - 2, cI] - w[cK, cJ, cI])
-                + wYp * (w[cK, 2:M, cI] + dw[cK, 2:M, cI] - w[cK, cJ, cI])
-                + wZm * (w[0 : P - 2, cJ, cI] + dw[0 : P - 2, cJ, cI] - w[cK, cJ, cI])
-                + wZp * (w[2:P, cJ, cI] + dw[2:P, cJ, cI] - w[cK, cJ, cI])
-            )
-            den_w[cK, cJ, cI] = denom_w_data[cK, cJ, cI] + (
-                wXm + wXp + wYm + wYp + wZm + wZp
-            )
-
-            du_int = du[cK, cJ, cI]
-            dv_int = dv[cK, cJ, cI]
-            dw_int = dw[cK, cJ, cI]
-            den_u_loc = den_u[cK, cJ, cI]
-            den_v_loc = den_v[cK, cJ, cI]
-            den_w_loc = den_w[cK, cJ, cI]
-            frac_u = torch.where(
-                den_u_loc != 0,
-                num_u[cK, cJ, cI] / den_u_loc,
-                torch.zeros_like(den_u_loc),
-            )
-            frac_v = torch.where(
-                den_v_loc != 0,
-                num_v[cK, cJ, cI] / den_v_loc,
-                torch.zeros_like(den_v_loc),
-            )
-            frac_w = torch.where(
-                den_w_loc != 0,
-                num_w[cK, cJ, cI] / den_w_loc,
-                torch.zeros_like(den_w_loc),
-            )
-            new_u = (1 - omega) * du_int + omega * frac_u
-            new_v = (1 - omega) * dv_int + omega * frac_v
-            new_w = (1 - omega) * dw_int + omega * frac_w
-            du[cK, cJ, cI] = torch.where(Bmask, new_u, du_int)
-            dv[cK, cJ, cI] = torch.where(Bmask, new_v, dv_int)
-            dw[cK, cJ, cI] = torch.where(Bmask, new_w, dw_int)
-
-            _set_boundary3d_(du)
-            _set_boundary3d_(dv)
-            _set_boundary3d_(dw)
+                refresh_boundaries()
 
         return du, dv, dw

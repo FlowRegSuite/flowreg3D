@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Literal, Optional, Tuple, Union, cast
 
 import torch
 import torch.nn.functional as F
@@ -7,7 +7,22 @@ from flowreg3d.core.torch.level_solver_3d import level_solver_rbgs3d_torch
 from flowreg3d.util.torch.resize_util_3D import imresize_fused_gauss_cubic3D
 
 Tensor = torch.Tensor
+InterpolationMethod = Literal["cubic", "bilinear", "nearest"]
+_INTERPOLATION_METHODS = ("cubic", "bilinear", "nearest")
 resize = imresize_fused_gauss_cubic3D
+
+
+def _normalize_interpolation_method(method: str) -> InterpolationMethod:
+    if not isinstance(method, str):
+        raise ValueError(
+            "Unsupported interpolation method. Use 'cubic', 'bilinear', or 'nearest'."
+        )
+    normalized = method.lower()
+    if normalized not in _INTERPOLATION_METHODS:
+        raise ValueError(
+            "Unsupported interpolation method. Use 'cubic', 'bilinear', or 'nearest'."
+        )
+    return cast(InterpolationMethod, normalized)
 
 
 def _replicate_pad3d(x: Tensor, pad) -> Tensor:
@@ -83,19 +98,75 @@ def imregister_wrapper(
     v: Tensor,
     w: Tensor,
     f1_level: Tensor,
-    interpolation_method: str = "bilinear",
+    interpolation_method: str = "cubic",
 ) -> Tensor:
-    assert interpolation_method in (
-        "bilinear",
-        "nearest",
-    ), "Only 'bilinear' and 'nearest' interpolation are supported with torch backend."
+    interpolation_method = _normalize_interpolation_method(interpolation_method)
+
     if f2_level.ndim == 3:
         f2_level = f2_level.unsqueeze(-1)
+    if f1_level.ndim == 3:
         f1_level = f1_level.unsqueeze(-1)
+
     D, H, W, C = f2_level.shape
     z = torch.arange(D, device=f2_level.device, dtype=u.dtype).view(D, 1, 1)
     y = torch.arange(H, device=f2_level.device, dtype=u.dtype).view(1, H, 1)
     x = torch.arange(W, device=f2_level.device, dtype=u.dtype).view(1, 1, W)
+
+    if interpolation_method == "cubic":
+        try:
+            import interpol
+        except ImportError as exc:
+            raise ImportError(
+                "Cubic interpolation requires torch-interpol. Install the GPU "
+                "dependencies with `pip install 'flowreg3d[gpu]'`."
+            ) from exc
+
+        # Match the NumPy implementation's explicit float32 coordinate
+        # conversion before clipping and interpolation.
+        map_x = (x + u).to(torch.float32)
+        map_y = (y + v).to(torch.float32)
+        map_z = (z + w).to(torch.float32)
+        oob = (
+            (map_x < 0)
+            | (map_x >= W)
+            | (map_y < 0)
+            | (map_y >= H)
+            | (map_z < 0)
+            | (map_z >= D)
+        )
+        map_x = map_x.clamp(0, W - 1)
+        map_y = map_y.clamp(0, H - 1)
+        map_z = map_z.clamp(0, D - 1)
+
+        voxel_grid = torch.stack((map_z, map_y, map_x), dim=-1).unsqueeze(0)
+        image = f2_level.permute(3, 0, 1, 2).unsqueeze(0)
+
+        # scipy.ndimage.map_coordinates pads by this amount before applying
+        # its spline prefilter in nearest-boundary mode. Reproducing the halo
+        # makes torch-interpol bit-exact with the CPU wrapper.
+        scipy_nearest_prepad = 12
+        image = F.pad(
+            image,
+            (scipy_nearest_prepad,) * 6,
+            mode="replicate",
+        )
+        voxel_grid = voxel_grid.to(dtype=image.dtype) + scipy_nearest_prepad
+        sampled = interpol.grid_pull(
+            image,
+            voxel_grid,
+            interpolation=3,
+            bound="nearest",
+            extrapolate=True,
+            prefilter=True,
+        )
+        sampled = sampled.squeeze(0).permute(1, 2, 3, 0).to(torch.float32)
+        sampled = torch.where(
+            oob.unsqueeze(-1),
+            f1_level.to(dtype=sampled.dtype),
+            sampled,
+        )
+        return sampled[..., 0] if C == 1 else sampled
+
     map_x = x + u
     map_y = y + v
     map_z = z + w
@@ -117,15 +188,13 @@ def imregister_wrapper(
         F.grid_sample(
             x_in,
             grid,
-            mode="bilinear",
+            mode=interpolation_method,
             padding_mode="border",
             align_corners=True,
         )
         .squeeze(0)
         .permute(1, 2, 3, 0)
     )
-    if f1_level.ndim == 3:
-        f1_level = f1_level.unsqueeze(-1)
     sampled[oob] = f1_level[oob]
     return sampled[..., 0] if C == 1 else sampled
 
@@ -275,8 +344,11 @@ def get_displacement(
     const_assumption: str = "gc",
     uvw: Optional[Tensor] = None,
     weight: Optional[Union[float, Tensor]] = None,
+    *,
+    interpolation_method: InterpolationMethod = "cubic",
 ) -> Tensor:
     assert const_assumption == "gc"
+    interpolation_method = _normalize_interpolation_method(interpolation_method)
     # dtype parity with NumPy path
     fixed = fixed.to(torch.float64)
     moving = moving.to(torch.float64)
@@ -365,7 +437,7 @@ def get_displacement(
                 v[1:-1, 1:-1, 1:-1] / cur_hy,
                 w[1:-1, 1:-1, 1:-1] / cur_hz,
                 f1_level,
-                interpolation_method="bilinear",
+                interpolation_method=interpolation_method,
             )
         if tmp.ndim == 3:
             tmp = tmp.unsqueeze(-1)

@@ -8,3 +8,4 @@ numba
 pydantic
 hdf5storage
 torch
+torch-interpol>=0.3.0,<0.4

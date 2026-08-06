@@ -49,6 +49,7 @@ test = [
 ]
 gpu = [
     "torch>=2.2.0",
+    "torch-interpol>=0.3.0,<0.4",
 ]
 
 [project.scripts]
